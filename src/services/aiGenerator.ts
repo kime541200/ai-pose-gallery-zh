@@ -851,7 +851,10 @@ export async function checkComfyWorkflow(
   const infoEntries = await Promise.all(
     classes.map(async (cls) => {
       const res = await comfyFetch(base, `/object_info/${encodeURIComponent(cls)}`, {}, apiKey, 15000)
-      const json = res.ok ? await readJsonSafe(res) : {}
+      if (!res.ok) {
+        throw new Error(`[ComfyUI] 无法读取节点「${cls}」的定义（HTTP ${res.status}），请检查连接地址、访问令牌和网关接口权限。`)
+      }
+      const json = await readJsonSafe(res)
       return [cls, json?.[cls]] as const
     })
   )
@@ -876,7 +879,20 @@ export async function checkComfyWorkflow(
     const optional = def.input?.optional || {}
     const inputs = node.inputs || {}
 
-    for (const name of Object.keys(required)) {
+    for (const [name, spec] of Object.entries<any>(required)) {
+      // V3 自动扩展组使用 images.image_1 等扁平输入，组名本身不参与执行。
+      if (spec?.[0] === 'COMFY_AUTOGROW_V3') {
+        const template = spec[1]?.template
+        if (template?.input?.required) {
+          for (let i = 0; i < (template.min ?? 0); i++) {
+            const child = template.names?.[i] ?? `${template.prefix}${i}`
+            if (!(`${name}.${child}` in inputs)) {
+              errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}.${child}`)
+            }
+          }
+        }
+        continue
+      }
       if (!(name in inputs)) errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}`)
     }
 

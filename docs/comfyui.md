@@ -17,7 +17,7 @@
 ## 需要的 ComfyUI 條件
 
 - ComfyUI ≥ 0.4x（內建 `TextEncodeQwenImageEditPlus`、`CFGNorm`）
-- custom nodes（對應 `comfyui-deploy` 的 `PROFILE=pose-gallery`）：
+- custom nodes（若使用 [kime541200/comfyui-deploy](https://github.com/kime541200/comfyui-deploy) 佈署，可選用 `PROFILE=pose-gallery`）：
   - `ComfyUI-GGUF`（`UnetLoaderGGUF`）
   - `comfyui_controlnet_aux`（`DepthAnythingV2Preprocessor`、`DWPreprocessor`；首次執行會自動拉取對應預處理權重）
 - 模型（放在 ComfyUI 的 `models/` 下，16 GB 顯存實測約 50–80 秒／張）：
@@ -33,6 +33,7 @@ Lightning LoRA 讓步數降為 4、CFG 為 1；不想用就在設定頁把 lora 
 
 ## 連線設定
 
-- Docker：`COMFYUI_UPSTREAM=http://<你的 ComfyUI>:8188 docker compose up -d --build`（預設 `http://host.docker.internal:8188`）
+- Docker：`PORT=8080 COMFYUI_UPSTREAM=http://<你的 ComfyUI>:8188 docker compose up -d --build`（預設 `PORT=8080`、`COMFYUI_UPSTREAM=http://host.docker.internal:8188`）
 - 開發：`COMFYUI_UPSTREAM=http://127.0.0.1:8188 pnpm dev`
 - 網頁「API 配置」→ 本地 ComfyUI：Base URL 保持 `/comfy`；檔名須與實際安裝一致。
+- **Agent MCP 整合**：若希望讓 AI Agent 透過 MCP 檢索本圖庫並自動呼叫 ComfyUI 生圖，可搭配 [kime541200/ai-pose-gallery-mcp](https://github.com/kime541200/ai-pose-gallery-mcp)。

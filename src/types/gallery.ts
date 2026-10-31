@@ -53,6 +53,7 @@ export interface PortraitItem {
 }
 
 export interface ExtraReferenceImage {
+  role?: 'character_sheet'
   id: string
   name: string
   url: string
@@ -62,6 +63,8 @@ export interface RecipeState {
   portrait: PortraitItem | null
   costume: CostumeItem | null
   pose: PoseItem | null
+  workflowImages?: Record<string, ExtraReferenceImage>
+  workflowImagesIdentity?: string
   extraImages?: ExtraReferenceImage[]
 }
 
@@ -76,7 +79,15 @@ export interface ProviderEndpointConfig {
 
 export type ImagePassMode = 'url' | 'base64'
 
+export type WorkflowScalar = string | number | boolean
+
+export interface WorkflowParameterOverrides {
+  workflowId: string
+  values: Record<string, Record<string, WorkflowScalar>>
+}
+
 export interface ComfyUiParams {
+  parameterOverrides?: WorkflowParameterOverrides
   workflowPreset: 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img' | 'custom'
   workflowJson: string
   promptNodeId: string

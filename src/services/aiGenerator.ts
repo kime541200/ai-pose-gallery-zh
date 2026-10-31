@@ -1,3 +1,4 @@
+import { COMFY_MAX_REFERENCE_IMAGES, generateWithComfyUI } from '@/services/comfyui'
 import type { ApiConfig, ImageProviderId, RecipeState } from '@/types/gallery'
 
 export interface ProviderModelOption {
@@ -75,6 +76,15 @@ export const PROVIDER_META: Record<
       { value: 'doubao-seededit-3-0-i2i-250628', label: 'doubao-seededit-3-0-i2i-250628' },
       { value: 'custom', label: '自定义模型 ID / Endpoint' },
     ],
+  },
+  comfyui: {
+    id: 'comfyui',
+    name: '本地 ComfyUI',
+    shortName: 'ComfyUI',
+    // 同源路徑：由 nginx（Docker）或 Vite dev server 轉發到使用者自己的 ComfyUI，無需 API Key
+    defaultBaseUrl: '/comfy',
+    docUrl: 'https://github.com/Comfy-Org/ComfyUI',
+    models: [{ value: 'qwen-image-edit-2509', label: 'Qwen-Image-Edit-2509（本地工作流）' }],
   },
 }
 
@@ -410,7 +420,7 @@ export async function generateCharacterImage(params: {
   const pCfg = config.providers[provider]
   const apiKey = pCfg.apiKey.trim()
 
-  if (!apiKey) {
+  if (provider !== 'comfyui' && !apiKey) {
     throw new Error(`请先配置 ${PROVIDER_META[provider].name} 的 API Key`)
   }
 
@@ -431,6 +441,25 @@ export async function generateCharacterImage(params: {
   }
 
   const baseUrl = (pCfg.baseUrl.trim() || PROVIDER_META[provider].defaultBaseUrl).replace(/\/+$/, '')
+
+  // 本地 ComfyUI：参考图一律转 PNG 后上传到 ComfyUI，不需要公网 URL 或 API Key
+  if (provider === 'comfyui') {
+    if (rawSources.length > COMFY_MAX_REFERENCE_IMAGES) {
+      throw new Error(`本地 ComfyUI 工作流最多支持 ${COMFY_MAX_REFERENCE_IMAGES} 张参考图，请减少附加参考图`)
+    }
+    const poseSlotIndex = recipe.pose
+      ? (recipe.portrait ? 1 : 0) + (recipe.costume ? 1 : 0)
+      : null
+    const imageDataUrls = await Promise.all(rawSources.map(srcToPngDataUrl))
+    const imageUrl = await generateWithComfyUI({
+      baseUrl,
+      prompt,
+      imageDataUrls,
+      poseSlotIndex,
+      params: config.comfyuiParams,
+    })
+    return { imageUrl, modelUsed: model, providerUsed: provider }
+  }
 
   // 判断当前请求是否需要转换为本地 Base64：
   // 1) 用户显式选择了 base64 模式

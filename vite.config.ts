@@ -124,5 +124,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 與 deploy/nginx.conf.template 的 /comfy/ 對應：開發時轉發到本機 ComfyUI
+    proxy: {
+      '/comfy': {
+        target: process.env.COMFYUI_UPSTREAM || 'http://127.0.0.1:8188',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/comfy/, ''),
+      },
+    },
   },
 })

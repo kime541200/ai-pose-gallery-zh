@@ -17,10 +17,10 @@ export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 })
 
-const PROVIDER_ORDER: ImageProviderId[] = ['gemini', 'gpt', 'qwen', 'doubao']
+const PROVIDER_ORDER: ImageProviderId[] = ['gemini', 'gpt', 'qwen', 'doubao', 'comfyui']
 
 function SettingsPage() {
-  const { apiConfig, updateApiConfig, updateProviderConfig } = useStudio()
+  const { apiConfig, updateApiConfig, updateProviderConfig, updateComfyuiParams } = useStudio()
   const [showKey, setShowKey] = useState(false)
 
   const pid = apiConfig.activeProvider
@@ -42,11 +42,11 @@ function SettingsPage() {
       />
 
       {/* 四大协议切换标签 */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {PROVIDER_ORDER.map((id) => {
           const itemMeta = PROVIDER_META[id]
           const isActive = pid === id
-          const hasKey = Boolean(apiConfig.providers[id].apiKey.trim())
+          const hasKey = id === 'comfyui' || Boolean(apiConfig.providers[id].apiKey.trim())
           return (
             <button
               key={id}
@@ -107,6 +107,7 @@ function SettingsPage() {
           />
         </Field>
 
+        {pid !== 'comfyui' && (
         <Field label="API Key">
           <div className="relative">
             <Input
@@ -125,6 +126,32 @@ function SettingsPage() {
             </button>
           </div>
         </Field>
+        )}
+
+        {pid === 'comfyui' && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              无需 API Key。Base URL 默认 /comfy（Docker 由 nginx 转发到环境变量 COMFYUI_UPSTREAM，
+              开发模式由 Vite 转发到本机 8188）。以下为 ComfyUI models/ 下的相对路径，需与你已安装的文件一致。
+            </p>
+            {(
+              [
+                ['unet', 'Qwen-Image-Edit-2509 GGUF（models/unet）'],
+                ['clip', '文本编码器（models/text_encoders）'],
+                ['vae', 'VAE（models/vae）'],
+                ['lora', 'Lightning 加速 LoRA（models/loras，留空则不使用）'],
+              ] as const
+            ).map(([key, label]) => (
+              <Field key={key} label={label}>
+                <Input
+                  value={apiConfig.comfyuiParams[key]}
+                  onChange={(e) => updateComfyuiParams({ [key]: e.target.value })}
+                  className="font-mono text-xs"
+                />
+              </Field>
+            ))}
+          </>
+        )}
 
         <Field label="默认模型 ID">
           <Select

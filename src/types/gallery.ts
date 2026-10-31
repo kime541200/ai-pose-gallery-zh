@@ -66,7 +66,7 @@ export interface RecipeState {
   extraImages?: ExtraReferenceImage[]
 }
 
-export type ImageProviderId = 'gemini' | 'gpt' | 'qwen' | 'doubao'
+export type ImageProviderId = 'gemini' | 'gpt' | 'qwen' | 'doubao' | 'comfyui'
 
 export interface ProviderEndpointConfig {
   baseUrl: string
@@ -108,6 +108,20 @@ export interface DoubaoParams {
   responseFormat: 'b64_json' | 'url'
 }
 
+/** 地端 ComfyUI（Qwen-Image-Edit-2509 工作流）；檔名為相對於 ComfyUI models/ 子目錄的路徑 */
+export interface ComfyuiParams {
+  unet: string
+  clip: string
+  vae: string
+  /** 加速 LoRA；留空代表不使用（請自行調整步數與 cfg） */
+  lora: string
+  width: number
+  height: number
+  steps: number
+  cfg: number
+  negativePrompt: string
+}
+
 export interface ApiConfig {
   activeProvider: ImageProviderId
   imagePassMode: ImagePassMode
@@ -119,6 +133,7 @@ export interface ApiConfig {
   geminiParams: GeminiParams
   qwenParams: QwenParams
   doubaoParams: DoubaoParams
+  comfyuiParams: ComfyuiParams
 }
 
 export interface GenerationHistoryItem {

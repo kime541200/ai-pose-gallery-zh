@@ -54,7 +54,7 @@ export const Route = createFileRoute('/studio')({
   component: StudioPage,
 })
 
-const PROVIDER_LIST: ImageProviderId[] = ['gemini', 'gpt', 'qwen', 'doubao']
+const PROVIDER_LIST: ImageProviderId[] = ['gemini', 'gpt', 'qwen', 'doubao', 'comfyui']
 
 function StudioPage() {
   const {
@@ -80,6 +80,7 @@ function StudioPage() {
     updateGeminiParams,
     updateQwenParams,
     updateDoubaoParams,
+    updateComfyuiParams,
     randomizeRecipe,
     removeHistoryItem,
     clearHistory,
@@ -197,7 +198,9 @@ function StudioPage() {
           <Button variant="outline" size="sm" asChild>
             <Link to="/settings">
               <KeyRoundIcon className="size-4" />
-              {providerCfg.apiKey ? `${providerMeta.shortName} 已就绪` : '配置 API Key'}
+              {providerCfg.apiKey || activeProvider === 'comfyui'
+                ? `${providerMeta.shortName} 已就绪`
+                : '配置 API Key'}
             </Link>
           </Button>
         }
@@ -788,6 +791,62 @@ function StudioPage() {
                         </SelectContent>
                       </Select>
                     </Field>
+                  </>
+                )}
+
+                {activeProvider === 'comfyui' && (
+                  <>
+                    <Field label="输出尺寸（宽 × 高）">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step={16}
+                          min={256}
+                          value={apiConfig.comfyuiParams.width}
+                          onChange={(e) => updateComfyuiParams({ width: Number(e.target.value) || 832 })}
+                          className="bg-background font-mono text-xs"
+                        />
+                        <span className="text-muted-foreground">×</span>
+                        <Input
+                          type="number"
+                          step={16}
+                          min={256}
+                          value={apiConfig.comfyuiParams.height}
+                          onChange={(e) => updateComfyuiParams({ height: Number(e.target.value) || 1216 })}
+                          className="bg-background font-mono text-xs"
+                        />
+                      </div>
+                    </Field>
+                    <Field label="步数 / CFG（Lightning LoRA：4 步、CFG 1）">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={apiConfig.comfyuiParams.steps}
+                          onChange={(e) => updateComfyuiParams({ steps: Number(e.target.value) || 4 })}
+                          className="bg-background font-mono text-xs"
+                        />
+                        <Input
+                          type="number"
+                          step={0.1}
+                          min={1}
+                          value={apiConfig.comfyuiParams.cfg}
+                          onChange={(e) => updateComfyuiParams({ cfg: Number(e.target.value) || 1 })}
+                          className="bg-background font-mono text-xs"
+                        />
+                      </div>
+                    </Field>
+                    <Field label="反向提示词">
+                      <Input
+                        value={apiConfig.comfyuiParams.negativePrompt}
+                        onChange={(e) => updateComfyuiParams({ negativePrompt: e.target.value })}
+                        placeholder="可留空（Lightning 模式下 CFG=1 不使用）"
+                        className="bg-background text-xs"
+                      />
+                    </Field>
+                    <p className="text-xs text-muted-foreground">
+                      模型文件名等进阶设置请至「API 配置」页调整。
+                    </p>
                   </>
                 )}
 

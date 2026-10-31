@@ -20,6 +20,7 @@ import type {
   PoseItem,
   ProviderEndpointConfig,
   QwenParams,
+  ComfyuiParams,
   RecipeState,
 } from '@/types/gallery'
 
@@ -58,6 +59,12 @@ const DEFAULT_API_CONFIG: ApiConfig = {
       model: PROVIDER_META.doubao.models[0].value,
       customModel: '',
     },
+    comfyui: {
+      baseUrl: PROVIDER_META.comfyui.defaultBaseUrl,
+      apiKey: '',
+      model: PROVIDER_META.comfyui.models[0].value,
+      customModel: '',
+    },
   },
   gptParams: {
     endpointMode: 'images_edits_json',
@@ -86,6 +93,17 @@ const DEFAULT_API_CONFIG: ApiConfig = {
     watermark: false,
     responseFormat: 'b64_json',
   },
+  comfyuiParams: {
+    unet: 'qwen-image-edit/Qwen-Image-Edit-2509-Q4_K_M.gguf',
+    clip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
+    vae: 'qwen_image_vae.safetensors',
+    lora: 'qwen-image-edit/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors',
+    width: 832,
+    height: 1216,
+    steps: 4,
+    cfg: 1,
+    negativePrompt: '',
+  },
 }
 
 function mergeStoredConfig(raw: unknown): ApiConfig {
@@ -99,11 +117,13 @@ function mergeStoredConfig(raw: unknown): ApiConfig {
       gpt: { ...DEFAULT_API_CONFIG.providers.gpt, ...obj.providers?.gpt },
       qwen: { ...DEFAULT_API_CONFIG.providers.qwen, ...obj.providers?.qwen },
       doubao: { ...DEFAULT_API_CONFIG.providers.doubao, ...obj.providers?.doubao },
+      comfyui: { ...DEFAULT_API_CONFIG.providers.comfyui, ...obj.providers?.comfyui },
     },
     gptParams: { ...DEFAULT_API_CONFIG.gptParams, ...obj.gptParams },
     geminiParams: { ...DEFAULT_API_CONFIG.geminiParams, ...obj.geminiParams },
     qwenParams: { ...DEFAULT_API_CONFIG.qwenParams, ...obj.qwenParams },
     doubaoParams: { ...DEFAULT_API_CONFIG.doubaoParams, ...obj.doubaoParams },
+    comfyuiParams: { ...DEFAULT_API_CONFIG.comfyuiParams, ...obj.comfyuiParams },
   }
 }
 
@@ -137,6 +157,7 @@ interface StudioContextValue {
   updateGeminiParams: (patch: Partial<GeminiParams>) => void
   updateQwenParams: (patch: Partial<QwenParams>) => void
   updateDoubaoParams: (patch: Partial<DoubaoParams>) => void
+  updateComfyuiParams: (patch: Partial<ComfyuiParams>) => void
   addHistory: (item: Omit<GenerationHistoryItem, 'id' | 'createdAt'>) => void
   removeHistoryItem: (id: string) => void
   clearHistory: () => void
@@ -347,6 +368,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setApiConfig((prev) => ({ ...prev, qwenParams: { ...prev.qwenParams, ...patch } }))
   }
 
+  const updateComfyuiParams = (patch: Partial<ComfyuiParams>) => {
+    setApiConfig((prev) => ({ ...prev, comfyuiParams: { ...prev.comfyuiParams, ...patch } }))
+  }
+
   const updateDoubaoParams = (patch: Partial<DoubaoParams>) => {
     setApiConfig((prev) => ({ ...prev, doubaoParams: { ...prev.doubaoParams, ...patch } }))
   }
@@ -458,6 +483,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         updateGeminiParams,
         updateQwenParams,
         updateDoubaoParams,
+        updateComfyuiParams,
         addHistory,
         removeHistoryItem,
         clearHistory,

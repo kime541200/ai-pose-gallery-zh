@@ -11,7 +11,9 @@ RUN pnpm build
 
 # --- runtime: nginx 提供靜態檔 ---
 FROM nginx:1.27-alpine
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+# nginx 官方映像會在啟動時對 templates/*.template 做 envsubst（只代換已定義的環境變數）
+COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV COMFYUI_UPSTREAM=http://host.docker.internal:8188
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY robots.txt sitemap.xml og-cover.jpg /usr/share/nginx/html/
 EXPOSE 80

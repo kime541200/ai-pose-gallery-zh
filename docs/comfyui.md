@@ -24,23 +24,61 @@
   - `ComfyUI-GGUF`（僅備選 `Qwen-Image-Edit-2509` GGUF 需要）
 
 ### 方案 A（預設推薦）：`FLUX 3 Image Klein Distilled (Int8)`
-16 GB 顯存可常駐不需 CPU Offload，16 步實測約 **35–45 秒／張**：
+16 GB 顯存可常駐不需 CPU Offload，16 步實測約 **35–45 秒／張**（共 3 個檔案，約 10.27 GB）：
 
-| 路徑 | 來源 | 大小 |
+| 路徑（相對於 ComfyUI `models/`） | 來源 Repo | 大小 |
 | --- | --- | --- |
-| `diffusion_models/flux3-image-klein-int8-convrot.safetensors` | `black-forest-labs/flux-3-image-klein-comfy` | 5.43 GB |
-| `text_encoders/qwen3vl_4b_int8_convrot.safetensors` | `black-forest-labs/flux-3-image-klein-comfy` | 4.52 GB |
+| `diffusion_models/flux3-image-klein-int8-convrot.safetensors` | `black-forest-labs/flux-3-image-klein-comfy`（或公開鏡像 `ml-resources/flux-3-image-klein-comfy`） | 5.43 GB |
+| `text_encoders/qwen3vl_4b_int8_convrot.safetensors` | `black-forest-labs/flux-3-image-klein-comfy`（或公開鏡像 `ml-resources/flux-3-image-klein-comfy`） | 4.52 GB |
 | `vae/flux2-vae.safetensors` | `Comfy-Org/flux2-dev` | 0.32 GB |
 
-### 方案 B（備選工作流）：`Qwen-Image-Edit-2509`
-16 GB 顯存實測約 50–85 秒／張（搭配 4 步 Lightning LoRA）：
+> **下載方式（免 Hugging Face Token 公開直連）**：
+> 官方 `black-forest-labs/flux-3-image-klein-comfy` 為 Gated Repo（需登入授權並配置 `HF_TOKEN`）；下方指令使用 SHA256 相同的公開鏡像，可直接複製執行（請將 `COMFYUI_MODELS_DIR` 替換為你的 ComfyUI `models` 目錄，預設為 `/data/comfyui/models`）：
+>
+> ```bash
+> COMFYUI_MODELS_DIR=${COMFYUI_MODELS_DIR:-/data/comfyui/models}
+> mkdir -p "$COMFYUI_MODELS_DIR"/{diffusion_models,text_encoders,vae}
+>
+> wget -c -O "$COMFYUI_MODELS_DIR/diffusion_models/flux3-image-klein-int8-convrot.safetensors" \
+>   "https://huggingface.co/ml-resources/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors"
+>
+> wget -c -O "$COMFYUI_MODELS_DIR/text_encoders/qwen3vl_4b_int8_convrot.safetensors" \
+>   "https://huggingface.co/ml-resources/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors"
+>
+> wget -c -O "$COMFYUI_MODELS_DIR/vae/flux2-vae.safetensors" \
+>   "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
+> ```
 
-| 路徑 | 來源 | 大小 |
+### 方案 B（備選工作流）：`Qwen-Image-Edit-2509`
+16 GB 顯存實測約 50–85 秒／張（搭配 4 步 Lightning LoRA，共 4 個檔案，約 23.55 GB）：
+
+| 路徑（相對於 ComfyUI `models/`） | 來源 Repo | 大小 |
 | --- | --- | --- |
 | `unet/qwen-image-edit/Qwen-Image-Edit-2509-Q4_K_M.gguf` | `QuantStack/Qwen-Image-Edit-2509-GGUF` | 13.07 GB |
 | `text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors` | `Comfy-Org/Qwen-Image_ComfyUI` | 9.38 GB |
 | `vae/qwen_image_vae.safetensors` | `Comfy-Org/Qwen-Image_ComfyUI` | 0.25 GB |
 | `loras/qwen-image-edit/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors` | `lightx2v/Qwen-Image-Lightning` | 0.85 GB |
+
+<details><summary>展開方案 B 下載指令</summary>
+
+```bash
+COMFYUI_MODELS_DIR=${COMFYUI_MODELS_DIR:-/data/comfyui/models}
+mkdir -p "$COMFYUI_MODELS_DIR"/{unet/qwen-image-edit,text_encoders,vae,loras/qwen-image-edit}
+
+wget -c -O "$COMFYUI_MODELS_DIR/unet/qwen-image-edit/Qwen-Image-Edit-2509-Q4_K_M.gguf" \
+  "https://huggingface.co/QuantStack/Qwen-Image-Edit-2509-GGUF/resolve/main/Qwen-Image-Edit-2509-Q4_K_M.gguf"
+
+wget -c -O "$COMFYUI_MODELS_DIR/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors" \
+  "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+
+wget -c -O "$COMFYUI_MODELS_DIR/vae/qwen_image_vae.safetensors" \
+  "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors"
+
+wget -c -O "$COMFYUI_MODELS_DIR/loras/qwen-image-edit/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors" \
+  "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors"
+```
+
+</details>
 
 ## 連線設定
 

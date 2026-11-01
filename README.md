@@ -31,7 +31,7 @@
 3. **三合一 AI 角色合成工作台** —— 基于 **React 19 + Tailwind CSS 4 + TypeScript 7 + shadcn/ui + TanStack Router** 构建的响应式多页面应用（兼容 PC / 平板 / 手机）：
    - 从三大图库任意挑选 **人像 + 服装 + 姿势** 组合配方，或一键随机捏人；
    - 支持拖拽 / 剪贴板粘贴（`Cmd+V` / `Ctrl+V`） / URL 添加多张自定义附加参考图；
-   - 内置 **4 大主流 AI 图像协议直连**（Gemini、OpenAI GPT、阿里千问 Qwen、字节豆包 Seedream），支持直接传递公网图片 URL 或 Base64，生成记录通过 **IndexedDB** 本地持久化保存。
+   - 内置 **本地 ComfyUI（免 API Key）** 与 **4 大主流云端 AI 图像协议直连**（Gemini、OpenAI GPT、阿里千问 Qwen、字节豆包 Seedream），支持直接传递公网图片 URL 或 Base64，生成记录通过 **IndexedDB** 本地持久化保存。
 
 ---
 
@@ -48,6 +48,7 @@
 - **参考拼图预览与导出**：弹窗查看三合一高清参考拼图（`1800×1200` Canvas 合成），支持一键下载拼图 PNG。
 - **12 种画风预设 & 自动提示词**：内置「无预设（跟随参考图）」、日系赛璐璐、厚涂插画、写实摄影、水彩、国风、3D 渲染等 12 种画风，根据已选素材自动组装中英双语结构化 Prompt。
 - **多协议 AI 生图与高级参数**：
+  - **本地 ComfyUI（免 API Key）**：内置 **`FLUX 3 Image Klein Distilled (Int8)`（默认推荐）** 与 **`Qwen-Image-Edit-2509`（备选）** 双工作流模板，自动通过 `DepthAnythingV2` 将白模姿势图转为 3D 深度轮廓图进行多图角色合成（详见 [`docs/comfyui.md`](docs/comfyui.md)）
   - **Google Gemini**：`gemini-3.1-flash-image-preview`、`gemini-3-pro-image-preview`、`gemini-2.5-flash-image`（支持宽高比 `aspectRatio`、分辨率 `1K/2K/4K`）
   - **OpenAI GPT Image**：`gpt-image-1.5`、`gpt-image-1`、`gpt-image-1-mini`（支持 `/v1/images/edits` JSON URL 直传 / Multipart 上传、尺寸、质量、背景透明度）
   - **阿里千问 Qwen-Image**：`qwen-image-2.0-pro`、`qwen-image-2.0`、`qwen-image-edit-max`（支持 `multimodal-generation` 多图参考输入、智能改写 `prompt_extend`、水印开关）
@@ -116,6 +117,15 @@ pnpm dev
 
 # 3. 类型检查 + 生产构建 + 代码规范检查
 pnpm build && pnpm lint
+```
+
+### Docker 部署与本地 ComfyUI 对接
+
+若使用 Docker 启动本工作台并对接本地 ComfyUI（所需模型与完整下载指令详见 [`docs/comfyui.md`](docs/comfyui.md)，ComfyUI 容器部署可见 [kime541200/comfyui-deploy](https://github.com/kime541200/comfyui-deploy) 的 `PROFILE=pose-gallery`）：
+
+```bash
+cp .env.example .env   # 按需调整 PORT (默认 8080) 与 COMFYUI_UPSTREAM (默认 http://host.docker.internal:8188)
+docker compose up -d --build
 ```
 
 ### 数据与图片维护脚本（Python 3）

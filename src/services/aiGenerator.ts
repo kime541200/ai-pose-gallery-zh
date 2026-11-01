@@ -159,7 +159,7 @@ export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic'
   }
   if (recipe.pose) {
     clauses.push(
-      `• 【图${idx}（姿势参考）】：身体姿态与镜头透视遵循图${idx}「${recipe.pose.姿势名称}」【${recipe.pose.角度}】（仅参考骨架动作，忽略素体白模材质）。`
+      `• 【图${idx}（姿势参考）】：身体姿态、四肢动作与镜头透视严格遵循图${idx}深度图「${recipe.pose.姿势名称}」【${recipe.pose.角度}】（仅参考图${idx}的立体姿态与空间透视，忽略黑白深度图与素体材质，还原为真实肤色与光影）。`
     )
     idx++
   }

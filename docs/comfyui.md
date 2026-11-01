@@ -8,18 +8,18 @@
 `POST /upload/image` → `POST /prompt` → 輪詢 `/history/{id}` → `GET /view`。
 實作見 `src/services/comfyui.ts`；workflow 模板為 `src/workflows/qwen-image-edit-2509.api.json`（ComfyUI API 格式，可直接餵給 `validate_workflow`／`run_workflow`，`{{PROMPT}}` 與 `image1.png` 等為佔位）。
 
-### 為什麼姿勢圖會先經過 `DepthAnythingV2 → DWPose`？
+### 為什麼姿勢圖會先經過 `DepthAnythingV2`？
 
-本庫的姿勢參考圖是白底黑線的球形關節素體（含臉部十字線與關節球）。若直接將素體圖作為 VAE reference latent 送進 `Qwen-Image-Edit-2509`，模型會將它視為線稿控制（Lineart Control），把人偶關節與臉部十字線直接畫進人物身上。
+本庫的姿勢參考圖是白底黑線的球形關節素體（含臉部十字線與關節球）。若直接將素體圖作為 VAE reference latent 送進 `Qwen-Image-Edit-2509`，模型會將它視為線稿控制（Lineart Control），把人偶關節與臉部十字線直接畫進人物身上；而若再串接傳統 `DWPose`（`yolox_l`），遇到仰視／俯視極限透視、倒立下腰或雙人交錯姿勢時，人體檢測器會漏檢並輸出全黑骨架圖，導致前後朝向顛倒或退化為正面半身照。
 
-因此工作流會在有選取姿勢圖時，自動以 `comfyui_controlnet_aux` 的 `DepthAnythingV2Preprocessor`（抹除素體內部關節線、轉為立體深度輪廓）串接 `DWPreprocessor`（擷取全身與手部 OpenPose 關鍵點骨架），再送入 `TextEncodeQwenImageEditPlus` 的 `image3`，走 Qwen-Image-Edit-2509 原生的「多圖關鍵點穿衣姿勢」模式。
+因此工作流會在有選取姿勢圖時，自動以 `comfyui_controlnet_aux` 的 `DepthAnythingV2Preprocessor`（抹除素體內部關節線、轉為平滑立體的 3D 灰階深度輪廓圖）直接送入 `TextEncodeQwenImageEditPlus` 的 `image3`，讓 Qwen2.5-VL 多模態編碼器同時掌握精準的前後景深、肢體交錯遮擋關係與鏡頭透視。
 
 ## 需要的 ComfyUI 條件
 
 - ComfyUI ≥ 0.4x（內建 `TextEncodeQwenImageEditPlus`、`CFGNorm`）
 - custom nodes（若使用 [kime541200/comfyui-deploy](https://github.com/kime541200/comfyui-deploy) 佈署，可選用 `PROFILE=pose-gallery`）：
   - `ComfyUI-GGUF`（`UnetLoaderGGUF`）
-  - `comfyui_controlnet_aux`（`DepthAnythingV2Preprocessor`、`DWPreprocessor`；首次執行會自動拉取對應預處理權重）
+  - `comfyui_controlnet_aux`（`DepthAnythingV2Preprocessor`；首次執行會自動拉取 `depth_anything_v2_vitl.pth` 預處理權重）
 - 模型（放在 ComfyUI 的 `models/` 下，16 GB 顯存實測約 50–80 秒／張）：
 
 | 路徑 | 來源 | 大小 |

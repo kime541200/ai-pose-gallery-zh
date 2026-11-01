@@ -35,8 +35,8 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 /**
  * 依參考圖張數、使用者參數，從模板組出可送出的 API workflow。
  * - 未使用的圖片槽（LoadImage / 縮放 / 編碼器輸入）會被移除
- * - 若有指定 poseSlotIndex，該槽位的素體白模圖會先經 DepthAnythingV2 → DWPose 轉為關鍵點骨架圖，
- *   避免 Qwen-Image-Edit 把白模關節線當成真實人偶線條畫進結果
+ * - 若有指定 poseSlotIndex，該槽位的素體白模圖會先經 DepthAnythingV2 轉為 3D 深度輪廓圖，
+ *   抹除白模關節線並完整保留立體朝向、極限透視與雙人交錯結構
  * - lora 為空字串時略過 LoRA（此時請自行設定步數與 cfg）
  */
 export function buildQwenEditWorkflow(opts: {
@@ -78,10 +78,9 @@ export function buildQwenEditWorkflow(opts: {
   if (poseSlotIndex !== null && poseSlotIndex >= 0 && poseSlotIndex < uploadedNames.length) {
     const poseSlot = IMAGE_SLOTS[poseSlotIndex]
     wf['16'].inputs.image = [poseSlot.load, 0]
-    wf[poseSlot.scale].inputs.image = ['17', 0]
+    wf[poseSlot.scale].inputs.image = ['16', 0]
   } else {
     delete wf['16']
-    delete wf['17']
   }
 
   wf['20'].inputs.prompt = prompt

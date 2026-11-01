@@ -44,7 +44,7 @@
   },
   "15": {
     "class_type": "ImageScaleToTotalPixels",
-    "inputs": { "image": ["17", 0], "upscale_method": "lanczos", "megapixels": 1, "resolution_steps": 1 }
+    "inputs": { "image": ["16", 0], "upscale_method": "lanczos", "megapixels": 1, "resolution_steps": 1 }
   },
   "16": {
     "class_type": "DepthAnythingV2Preprocessor",
@@ -52,19 +52,6 @@
       "image": ["12", 0],
       "ckpt_name": "depth_anything_v2_vitl.pth",
       "resolution": 768
-    }
-  },
-  "17": {
-    "class_type": "DWPreprocessor",
-    "inputs": {
-      "image": ["16", 0],
-      "detect_hand": "enable",
-      "detect_body": "enable",
-      "detect_face": "disable",
-      "resolution": 768,
-      "bbox_detector": "yolox_l.onnx",
-      "pose_estimator": "dw-ll_ucoco_384_bs5.torchscript.pt",
-      "scale_stick_for_xinsr_cn": "disable"
     }
   },
   "20": {

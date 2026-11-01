@@ -23,7 +23,7 @@
 
 ## 2. ComfyUI 必備模型與下載指引
 
-合成台支援雙工作流引擎（於網頁 `/settings` →「本地 ComfyUI」切換），模型定義與檢查邏輯位於 [`src/services/comfyui.ts`](src/services/comfyui.ts)，工作流模板位於 [`src/workflows/`](src/workflows/)。
+合成台支援雙工作流引擎（於網頁 `/studio` →「工作流模板」切換），模型預檢、動態槽位裁剪與執行邏輯位於 [`src/services/aiGenerator.ts`](src/services/aiGenerator.ts)，工作流模板位於 [`src/workflows/`](src/workflows/)。
 
 ### 預設推薦：`FLUX 3 Image Klein Distilled (Int8)`（共 3 個檔案，約 10.27 GB）
 

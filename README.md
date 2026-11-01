@@ -177,12 +177,23 @@ pnpm build && pnpm lint
 
 ### Docker 部署与本地 ComfyUI 对接
 
-若使用 Docker 启动本工作台并对接本地 ComfyUI（所需模型与完整下载指令详见 [`docs/comfyui.md`](docs/comfyui.md)，ComfyUI 容器部署可见 [kime541200/comfyui-deploy](https://github.com/kime541200/comfyui-deploy) 的 `PROFILE=pose-gallery`）：
+本项目内置 [`Dockerfile`](Dockerfile)、[`docker-compose.yml`](docker-compose.yml) 与 [`deploy/nginx.conf.template`](deploy/nginx.conf.template)，支持零拷贝挂载本地图库（`data/`、`thumbs/`、`img/`）并将 `/comfy/*`（含 WebSocket 进度流）反向代理至本地 ComfyUI，免配置跨域参数（所需模型与直连下载指令详见 [`docs/comfyui.md`](docs/comfyui.md)）：
 
 ```bash
 cp .env.example .env   # 按需调整 PORT (默认 8080) 与 COMFYUI_UPSTREAM (默认 http://host.docker.internal:8188)
 docker compose up -d --build
 ```
+
+### 周边开源生态（ComfyUI 容器化 & AI Agent MCP 工具链）
+
+围绕本图库与本地 ComfyUI 多图角色合成，我们开源了一套可独立组合的容器化与 AI Agent (MCP) 配套项目，欢迎使用、Star 或提交 Issue / PR 共同优化：
+
+| 配套项目 | 功能说明 |
+| --- | --- |
+| **[kime541200/comfyui-deploy](https://github.com/kime541200/comfyui-deploy)** | **Docker 化 ComfyUI（Profile 驱动）**：通过 `PROFILE=pose-gallery docker compose up -d --build` 一键启动预装 `comfyui_controlnet_aux`（`DepthAnythingV2`）与 `ComfyUI-GGUF` 的干净 GPU 容器。 |
+| **[kime541200/ai-pose-gallery-mcp](https://github.com/kime541200/ai-pose-gallery-mcp)** | **图库检索与合成 MCP Server**：提供 Streamable HTTP MCP 接口，让 Claude Code / Cursor 等 Agent 用自然语言模糊搜索 4,345 张参考图，并自动上传至 ComfyUI 执行 `FLUX 3 Image Klein` 或 `Qwen-Image-Edit-2509` 多图角色合成。 |
+| **[kime541200/comfyui-agent](https://github.com/kime541200/comfyui-agent)** | **AI Agent 生图工作区**：整合 `ai-pose-gallery-mcp` 与 [kime541200/comfy-mcp](https://github.com/kime541200/comfy-mcp)，内置验证过的 API 工作流模板库与 Agent 操作规范。 |
+| **[kime541200/lora-training](https://github.com/kime541200/lora-training)** | **Docker 化 LoRA 训练环境**：封装 kohya `sd-scripts` 与 WD14 自动打标/清洗脚本，训练产出的角色 LoRA 可直接挂载至 ComfyUI 使用。 |
 
 ### 数据与图片维护脚本（Python 3）
 

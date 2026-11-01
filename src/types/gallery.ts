@@ -1,4 +1,5 @@
 export interface PoseItem {
+  source?: 'upload'
   id: string
   体系: string
   姿势编号: string
@@ -22,9 +23,9 @@ export interface PoseGroup {
 }
 
 export interface CostumeItem {
+  source?: 'upload'
   id: string
   分类: string
-  原分类: string
   服装名称: string
   标签: string[]
   关键词: string
@@ -35,13 +36,11 @@ export interface CostumeItem {
 }
 
 export interface PortraitItem {
+  source?: 'upload'
   id: string
   分区: string
-  原分区: string
   发长: string
-  原发长: string
   发型名称: string
-  原发型: string
   标题: string
   宽: number
   高: number
@@ -54,6 +53,7 @@ export interface PortraitItem {
 }
 
 export interface ExtraReferenceImage {
+  role?: 'character_sheet'
   id: string
   name: string
   url: string
@@ -63,6 +63,8 @@ export interface RecipeState {
   portrait: PortraitItem | null
   costume: CostumeItem | null
   pose: PoseItem | null
+  workflowImages?: Record<string, ExtraReferenceImage>
+  workflowImagesIdentity?: string
   extraImages?: ExtraReferenceImage[]
 }
 
@@ -76,6 +78,36 @@ export interface ProviderEndpointConfig {
 }
 
 export type ImagePassMode = 'url' | 'base64'
+
+export type WorkflowScalar = string | number | boolean
+
+export interface WorkflowParameterOverrides {
+  workflowId: string
+  values: Record<string, Record<string, WorkflowScalar>>
+}
+
+export interface ComfyUiParams {
+  parameterOverrides?: WorkflowParameterOverrides
+  workflowPreset:
+    | 'flux3_klein'
+    | 'qwen2509_depth'
+    | 'qwen2509_3img'
+    | 'qwen2509_2img'
+    | 'qwen21_3img'
+    | 'qwen21_2img'
+    | 'custom'
+  workflowJson: string
+  promptNodeId: string
+  portraitNodeId: string
+  costumeNodeId: string
+  poseNodeId: string
+  stitchedNodeId: string
+  randomizeSeed: boolean
+  /** 单次生成最长等待秒数 */
+  timeoutSec: number
+  /** 配置结构版本，用于迁移旧版默认值 */
+  configVersion?: number
+}
 
 export interface GptParams {
   endpointMode: 'images_edits_json' | 'images_edits' | 'responses' | 'chat'
@@ -108,7 +140,7 @@ export interface DoubaoParams {
   responseFormat: 'b64_json' | 'url'
 }
 
-/** 地端 ComfyUI（Qwen-Image-Edit-2509 工作流）；檔名為相對於 ComfyUI models/ 子目錄的路徑 */
+/** 地端 ComfyUI 工作流預設參數（供 comfyui.ts 模板輔助函式使用） */
 export interface ComfyuiParams {
   unet: string
   clip: string
@@ -133,7 +165,7 @@ export interface ApiConfig {
   geminiParams: GeminiParams
   qwenParams: QwenParams
   doubaoParams: DoubaoParams
-  comfyuiParams: ComfyuiParams
+  comfyuiParams: ComfyUiParams
 }
 
 export interface GenerationHistoryItem {

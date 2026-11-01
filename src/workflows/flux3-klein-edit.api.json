@@ -4,6 +4,9 @@
     "inputs": {
       "unet_name": "flux3-image-klein-int8-convrot.safetensors",
       "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "加载 FLUX 3 Image Klein 模型"
     }
   },
   "2": {
@@ -12,12 +15,18 @@
       "clip_name": "qwen3vl_4b_int8_convrot.safetensors",
       "type": "flux3",
       "device": "default"
+    },
+    "_meta": {
+      "title": "加载 Qwen3-VL 4B 文本编码器"
     }
   },
   "3": {
     "class_type": "VAELoader",
     "inputs": {
       "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "加载 Flux2 VAE"
     }
   },
   "6": {
@@ -31,24 +40,51 @@
       "base_shift": 2.77259,
       "width": 832,
       "height": 1216
+    },
+    "_meta": {
+      "title": "ModelSamplingFlux",
+      "studio": {
+        "hiddenInputs": [
+          "width",
+          "height"
+        ]
+      }
     }
   },
   "10": {
     "class_type": "LoadImage",
     "inputs": {
       "image": "image1.png"
+    },
+    "_meta": {
+      "title": "图1：人像参考 (Portrait)",
+      "studio": {
+        "optionalSlot": true
+      }
     }
   },
   "11": {
     "class_type": "LoadImage",
     "inputs": {
       "image": "image2.png"
+    },
+    "_meta": {
+      "title": "图2：服装参考 (Costume)",
+      "studio": {
+        "optionalSlot": true
+      }
     }
   },
   "12": {
     "class_type": "LoadImage",
     "inputs": {
       "image": "image3.png"
+    },
+    "_meta": {
+      "title": "图3：姿势参考 (Pose)",
+      "studio": {
+        "optionalSlot": true
+      }
     }
   },
   "16": {
@@ -60,6 +96,9 @@
       ],
       "ckpt_name": "depth_anything_v2_vitl.pth",
       "resolution": 768
+    },
+    "_meta": {
+      "title": "姿势 3D 深度轮廓预处理 (DepthAnythingV2)"
     }
   },
   "20": {
@@ -70,6 +109,9 @@
         0
       ],
       "text": "{{PROMPT}}"
+    },
+    "_meta": {
+      "title": "正向提示词 (Positive Prompt)"
     }
   },
   "21": {
@@ -80,6 +122,18 @@
         0
       ],
       "text": ""
+    },
+    "_meta": {
+      "title": "反向提示词 (Negative Prompt)",
+      "studio": {
+        "controls": [
+          {
+            "input": "text",
+            "label": "反向提示词 (Negative Prompt)",
+            "group": "提示词"
+          }
+        ]
+      }
     }
   },
   "17": {
@@ -111,6 +165,9 @@
         "16",
         0
       ]
+    },
+    "_meta": {
+      "title": "多图参考 Latent 合成 (ReferenceMultiLatent)"
     }
   },
   "22": {
@@ -119,6 +176,23 @@
       "width": 832,
       "height": 1216,
       "batch_size": 1
+    },
+    "_meta": {
+      "title": "输出画布尺寸 (EmptyFlux2LatentImage)",
+      "studio": {
+        "controls": [
+          {
+            "input": "width",
+            "label": "输出宽度 (width)",
+            "group": "画布尺寸"
+          },
+          {
+            "input": "height",
+            "label": "输出高度 (height)",
+            "group": "画布尺寸"
+          }
+        ]
+      }
     }
   },
   "23": {
@@ -146,6 +220,23 @@
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1
+    },
+    "_meta": {
+      "title": "KSampler 采样器 (16 步 Distilled)",
+      "studio": {
+        "controls": [
+          {
+            "input": "steps",
+            "label": "采样步数 (steps)",
+            "group": "采样参数"
+          },
+          {
+            "input": "cfg",
+            "label": "CFG 引导强度",
+            "group": "采样参数"
+          }
+        ]
+      }
     }
   },
   "24": {
@@ -159,6 +250,9 @@
         "3",
         0
       ]
+    },
+    "_meta": {
+      "title": "VAE 解码"
     }
   },
   "25": {
@@ -169,6 +263,9 @@
         0
       ],
       "filename_prefix": "pose-gallery/output"
+    },
+    "_meta": {
+      "title": "保存生成结果"
     }
   }
 }

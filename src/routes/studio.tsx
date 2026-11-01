@@ -2,16 +2,21 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   ChevronDownIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
   ChevronUpIcon,
+  CodeXmlIcon,
   CopyIcon,
   DicesIcon,
   DownloadIcon,
+  FileUpIcon,
   ImagePlusIcon,
   KeyRoundIcon,
   LayoutGridIcon,
   LinkIcon,
   LoaderCircleIcon,
   PersonStandingIcon,
+  ScanSearchIcon,
   RotateCcwIcon,
   ShirtIcon,
   SlidersHorizontalIcon,
@@ -20,27 +25,39 @@ import {
   UserRoundIcon,
   XIcon,
 } from 'lucide-react'
-import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from 'react'
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
 import { Field, Section } from '@/components/common/FormSection'
+import { WorkflowParameters } from '@/components/studio/WorkflowParameters'
+import { applyWorkflowOverrides, validateReferenceCombinations, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { PageHeader } from '@/components/common/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  autoDetectComfyMappings,
   buildRecipePrompt,
+  type ComfyCheckResult,
+  type ComfyPresetId,
+  checkComfyWorkflow,
+  COMFYUI_WORKFLOW_TEMPLATES,
+  detectComfyUi,
   fileToDataUrl,
+  fetchComfyObjectInfo,
+  parseComfyWorkflowNodes,
   PROVIDER_META,
   stitchRecipeCanvas,
   STYLE_PRESETS,
 } from '@/services/aiGenerator'
+import { referenceImageUrl, uploadedReferences } from '@/lib/recipeImages'
 import { useStudio } from '@/store/studioStore'
 import type {
+  ComfyUiParams,
   DoubaoParams,
   GeminiParams,
   GptParams,
@@ -67,6 +84,8 @@ function StudioPage() {
     setPreviewUrl,
     isGenerating,
     generatingModel,
+    generationProgress,
+    generationError,
     startGeneration,
     setPortrait,
     setCostume,
@@ -80,31 +99,185 @@ function StudioPage() {
     updateGeminiParams,
     updateQwenParams,
     updateDoubaoParams,
-    updateComfyuiParams,
+    updateComfyUiParams,
     randomizeRecipe,
     removeHistoryItem,
     clearHistory,
   } = useStudio()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const comfyFileInputRef = useRef<HTMLInputElement | null>(null)
+  const slotInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadSlotRef = useRef<'portrait' | 'costume' | 'pose'>('portrait')
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null)
+  const [showReferenceErrors, setShowReferenceErrors] = useState(false)
+  const referenceErrorsRef = useRef<HTMLDivElement | null>(null)
 
   const activeProvider = apiConfig.activeProvider
   const providerMeta = PROVIDER_META[activeProvider]
   const providerCfg = apiConfig.providers[activeProvider]
 
-  const defaultPrompt = buildRecipePrompt(recipe, apiConfig.stylePreset)
+  const activeWorkflowImages = activeProvider === 'comfyui' && recipe.workflowImagesIdentity === workflowIdentity(apiConfig.comfyuiParams.workflowJson) ? Object.values(recipe.workflowImages || {}) : []
+  const defaultPrompt = buildRecipePrompt(recipe, apiConfig.stylePreset, activeWorkflowImages)
   const prompt = customPrompt ?? defaultPrompt
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [extraUrlInput, setExtraUrlInput] = useState('')
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [stitchModalUrl, setStitchModalUrl] = useState<string | null>(null)
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null)
+  const [showComfyJsonModal, setShowComfyJsonModal] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [comfyCheck, setComfyCheck] = useState<(ComfyCheckResult & { info?: string }) | null>(null)
+  const [checkingComfy, setCheckingComfy] = useState(false)
+
+  const parsedComfyNodes = useMemo(
+    () => parseComfyWorkflowNodes(apiConfig.comfyuiParams.workflowJson),
+    [apiConfig.comfyuiParams.workflowJson]
+  )
+
+  const handleSelectComfyPreset = (preset: ComfyUiParams['workflowPreset']) => {
+    setComfyCheck(null)
+    if (preset === 'custom') {
+      updateComfyUiParams({ workflowPreset: 'custom' })
+      return
+    }
+    const tpl = COMFYUI_WORKFLOW_TEMPLATES[preset]
+    updateComfyUiParams({
+      workflowPreset: preset,
+      workflowJson: JSON.stringify(tpl.workflow, null, 2),
+      ...tpl.defaults,
+    })
+    toast.success(`已切换为：${tpl.label}`)
+  }
+
+  // 自动识别 ComfyUI 地址 + 检测工作流所需节点/模型是否在本机存在
+  const handleCheckComfy = async () => {
+    setCheckingComfy(true)
+    setComfyCheck(null)
+    try {
+      const cfg = apiConfig.providers.comfyui
+      const found = await detectComfyUi(cfg.baseUrl, cfg.apiKey)
+      if (!found) {
+        setComfyCheck({
+          ok: false,
+          errors: [
+            `未找到可用的 ComfyUI 服务（已尝试：${cfg.baseUrl || '默认地址'}、127.0.0.1:8000、127.0.0.1:8188）。请确认 ComfyUI 已启动，并检查跨域 (CORS) 设置。`,
+          ],
+          warnings: [],
+          fixes: [],
+        })
+        return
+      }
+      if (found.baseUrl !== cfg.baseUrl.trim().replace(/\/+$/, '')) {
+        updateProviderConfig('comfyui', { baseUrl: found.baseUrl })
+        toast.success(`已自动识别 ComfyUI 地址：${found.baseUrl}`)
+      }
+      const cp = apiConfig.comfyuiParams
+      const result = await checkComfyWorkflow(found.baseUrl, cfg.apiKey, cp.workflowJson, [
+        cp.portraitNodeId,
+        cp.costumeNodeId,
+        cp.poseNodeId,
+        cp.stitchedNodeId,
+      ])
+      // 自动修复仅用于提交副本，保留导入的原始 API。
+      setComfyCheck({ ...result, info: `${found.info}（${found.baseUrl}）` })
+    } catch (e) {
+      setComfyCheck({ ok: false, errors: [e instanceof Error ? e.message : '检测失败'], warnings: [], fixes: [] })
+    } finally {
+      setCheckingComfy(false)
+    }
+  }
+
+  const handleComfyFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const text = await file.text()
+      const info = parseComfyWorkflowNodes(text)
+      if (!info.valid) {
+        toast.error(info.error || '工作流 JSON 无效')
+        return
+      }
+      const detected = autoDetectComfyMappings(text)
+      setComfyCheck(null)
+      updateComfyUiParams({
+        workflowPreset: 'custom',
+        workflowJson: text,
+        ...detected,
+      })
+      setShowAdvanced(true)
+      toast.success(
+        `已导入工作流：识别到 ${info.imageNodes.length} 个图片节点、${info.promptNodes.length} 个提示词节点`
+      )
+    } catch {
+      toast.error('读取 JSON 文件失败')
+    }
+  }
+
+  const handleExportComfyJson = async (original = false) => {
+    try {
+      const cp = apiConfig.comfyuiParams
+      const schemas = !original && cp.parameterOverrides?.workflowId === workflowIdentity(cp.workflowJson) ? await fetchComfyObjectInfo(providerCfg.baseUrl, providerCfg.apiKey, cp.workflowJson) : undefined
+      const wf = JSON.parse(original ? cp.workflowJson : applyWorkflowOverrides(cp.workflowJson, cp.parameterOverrides, schemas))
+      if (!original && cp.promptNodeId && cp.promptNodeId !== 'none' && wf[cp.promptNodeId]?.inputs) {
+        const inputs = wf[cp.promptNodeId].inputs
+        for (const field of ['prompt', 'text', 'string', 'positive']) {
+          if (typeof inputs[field] === 'string') {
+            inputs[field] = prompt
+            break
+          }
+        }
+      }
+      const blob = new Blob([JSON.stringify(wf, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `comfyui-workflow-${Date.now()}.api.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('已导出 ComfyUI API 工作流 JSON')
+    } catch {
+      toast.error('当前工作流 JSON 格式有误，无法导出')
+    }
+  }
+
+  const handleSlotUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const slot = uploadSlotRef.current
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件')
+      return
+    }
+    setUploadingSlot(slot)
+    try {
+      const url = await fileToDataUrl(file)
+      const image = new Image()
+      image.src = url
+      await image.decode()
+      const name = file.name.replace(/\.[^.]+$/, '') || '上传图片'
+      const items = uploadedReferences(name, url, image.width, image.height, file.size)
+      if (slot === 'portrait') setPortrait(items.portrait)
+      if (slot === 'costume') setCostume(items.costume)
+      if (slot === 'pose') setPose(items.pose)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '图片读取失败')
+    } finally {
+      setUploadingSlot(null)
+    }
+  }
+
+  const missingReferences = activeProvider === 'comfyui' ? [
+    { label: '人像', node: apiConfig.comfyuiParams.portraitNodeId, image: recipe.portrait },
+    { label: '服装', node: apiConfig.comfyuiParams.costumeNodeId, image: recipe.costume },
+    { label: '姿势', node: apiConfig.comfyuiParams.poseNodeId, image: recipe.pose },
+  ].filter((slot) => slot.node && slot.node !== 'none' && parsedComfyNodes.imageNodes.some((node) => node.id === slot.node && node.emptyValue === undefined) && !slot.image).map((slot) => slot.label) : []
 
   const extraImages = recipe.extraImages || []
-  const hasAnyRef = Boolean(
-    recipe.portrait || recipe.costume || recipe.pose || extraImages.length > 0
-  )
+  const hasStitchRefs = Boolean(recipe.portrait || recipe.costume || recipe.pose || extraImages.length > 0)
+  const hasAnyRef = hasStitchRefs || activeWorkflowImages.length > 0
 
   const processFiles = async (files: File[]) => {
     const imgFiles = files.filter((f) => f.type.startsWith('image/'))
@@ -187,6 +360,18 @@ function StudioPage() {
   }
 
   const handleGenerate = () => {
+    if (activeProvider === 'comfyui') {
+      const cp = apiConfig.comfyuiParams
+      const workflowImages = recipe.workflowImagesIdentity === workflowIdentity(cp.workflowJson) ? recipe.workflowImages || {} : {}
+      const selected = [recipe.portrait ? cp.portraitNodeId : '', recipe.costume ? cp.costumeNodeId : '', recipe.pose ? cp.poseNodeId : '', ...Object.keys(workflowImages)].filter((id) => id && id !== 'none')
+      const combinationError = validateReferenceCombinations(cp.workflowJson, selected)
+      if (combinationError) { toast.error(combinationError); setShowAdvanced(true); return }
+    }
+    if (missingReferences.length) {
+      setShowReferenceErrors(true)
+      requestAnimationFrame(() => referenceErrorsRef.current?.focus())
+      return
+    }
     void startGeneration(prompt)
   }
 
@@ -240,7 +425,7 @@ function StudioPage() {
                   <DicesIcon className="size-3.5" />
                   随机
                 </Button>
-                {hasAnyRef && (
+                {hasAnyRef && hasStitchRefs && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -255,107 +440,149 @@ function StudioPage() {
             }
           >
 
+            <input ref={slotInputRef} type="file" accept="image/*" className="hidden" onChange={handleSlotUpload} />
+            {showReferenceErrors && missingReferences.length > 0 && (
+              <div id="reference-errors" ref={referenceErrorsRef} role="alert" tabIndex={-1} className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive focus-visible:outline-2">
+                请先选择或上传：{missingReferences.join('、')}。这些槽位已绑定工作流节点。
+              </div>
+            )}
             {/* 3 个核心图库槽位：手机端单列舒展展示，平板/桌面端三列并排 */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {/* 人像槽 */}
-              <div className="relative flex items-center gap-2.5 rounded-xl bg-background p-2">
+              <div className={`relative flex min-w-0 items-center gap-2 rounded-xl bg-background p-2 ${showReferenceErrors && missingReferences.includes('人像') ? 'ring-1 ring-destructive' : ''}`}>
                 {recipe.portrait ? (
                   <>
-                    <img
-                      src={`/${recipe.portrait.缩略图}`}
-                      alt={recipe.portrait.标题}
-                      className="h-11 w-9 shrink-0 rounded-lg object-cover"
-                    />
+                    <button type="button" aria-label="放大人像参考图" className="flex min-h-11 min-w-11 shrink-0 cursor-zoom-in items-center justify-center rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => {
+                      const item = recipe.portrait
+                      if (item) setZoomImageUrl(referenceImageUrl(item.原图 || item.缩略图))
+                    }}>
+                      <img
+                        src={referenceImageUrl(recipe.portrait.缩略图)}
+                        alt={recipe.portrait.标题}
+                        className="h-11 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    </button>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] text-muted-foreground">人像</div>
-                      <div className="truncate text-xs font-medium">{recipe.portrait.发型名称}</div>
+                      <div className="text-xs text-muted-foreground">人像</div>
+                      <div className="truncate text-xs font-medium" title={recipe.portrait.发型名称}>{recipe.portrait.发型名称}</div>
                     </div>
                     <button
                       type="button"
+                      aria-label="清除人像参考图"
                       onClick={() => setPortrait(null)}
-                      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <XIcon className="size-3.5" />
                     </button>
                   </>
                 ) : (
-                  <Link
-                    to="/portraits"
-                    className="flex flex-1 items-center gap-2.5 py-0.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <UserRoundIcon className="size-4" />
-                    </div>
-                    <span className="truncate text-xs">+ 选人像</span>
-                  </Link>
+                  <>
+                    <Link
+                      to="/portraits"
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <UserRoundIcon className="size-4" />
+                      </div>
+                      <span className="truncate text-xs">+ 选人像</span>
+                    </Link>
+                    <Button type="button" variant="ghost" size="sm" aria-label="上传人像参考图" aria-describedby={showReferenceErrors && missingReferences.includes('人像') ? 'reference-errors' : undefined} aria-busy={uploadingSlot === 'portrait'} disabled={uploadingSlot !== null} className="h-11 shrink-0 border-l px-2 text-xs" onClick={() => { uploadSlotRef.current = 'portrait'; slotInputRef.current?.click() }}>
+                      {uploadingSlot === 'portrait' ? <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ImagePlusIcon className="size-3.5" />}
+                      {uploadingSlot === 'portrait' ? '处理中' : '上传'}
+                    </Button>
+                  </>
                 )}
               </div>
 
               {/* 服装槽 */}
-              <div className="relative flex items-center gap-2.5 rounded-xl bg-background p-2">
+              <div className={`relative flex min-w-0 items-center gap-2 rounded-xl bg-background p-2 ${showReferenceErrors && missingReferences.includes('服装') ? 'ring-1 ring-destructive' : ''}`}>
                 {recipe.costume ? (
                   <>
-                    <img
-                      src={`/${recipe.costume.缩略图}`}
-                      alt={recipe.costume.服装名称}
-                      className="h-11 w-9 shrink-0 rounded-lg object-cover"
-                    />
+                    <button type="button" aria-label="放大服装参考图" className="flex min-h-11 min-w-11 shrink-0 cursor-zoom-in items-center justify-center rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => {
+                      const item = recipe.costume
+                      if (item) setZoomImageUrl(referenceImageUrl(item.预览图 || item.原图 || item.缩略图))
+                    }}>
+                      <img
+                        src={referenceImageUrl(recipe.costume.缩略图)}
+                        alt={recipe.costume.服装名称}
+                        className="h-11 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    </button>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] text-muted-foreground">服装</div>
-                      <div className="truncate text-xs font-medium">{recipe.costume.服装名称}</div>
+                      <div className="text-xs text-muted-foreground">服装</div>
+                      <div className="truncate text-xs font-medium" title={recipe.costume.服装名称}>{recipe.costume.服装名称}</div>
                     </div>
                     <button
                       type="button"
+                      aria-label="清除服装参考图"
                       onClick={() => setCostume(null)}
-                      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <XIcon className="size-3.5" />
                     </button>
                   </>
                 ) : (
-                  <Link
-                    to="/costumes"
-                    className="flex flex-1 items-center gap-2.5 py-0.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <ShirtIcon className="size-4" />
-                    </div>
-                    <span className="truncate text-xs">+ 选服装</span>
-                  </Link>
+                  <>
+                    <Link
+                      to="/costumes"
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <ShirtIcon className="size-4" />
+                      </div>
+                      <span className="truncate text-xs">+ 选服装</span>
+                    </Link>
+                    <Button type="button" variant="ghost" size="sm" aria-label="上传服装参考图" aria-describedby={showReferenceErrors && missingReferences.includes('服装') ? 'reference-errors' : undefined} aria-busy={uploadingSlot === 'costume'} disabled={uploadingSlot !== null} className="h-11 shrink-0 border-l px-2 text-xs" onClick={() => { uploadSlotRef.current = 'costume'; slotInputRef.current?.click() }}>
+                      {uploadingSlot === 'costume' ? <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ImagePlusIcon className="size-3.5" />}
+                      {uploadingSlot === 'costume' ? '处理中' : '上传'}
+                    </Button>
+                  </>
                 )}
               </div>
 
               {/* 姿势槽 */}
-              <div className="relative flex items-center gap-2.5 rounded-xl bg-background p-2">
+              <div className={`relative flex min-w-0 items-center gap-2 rounded-xl bg-background p-2 ${showReferenceErrors && missingReferences.includes('姿势') ? 'ring-1 ring-destructive' : ''}`}>
                 {recipe.pose ? (
                   <>
-                    <img
-                      src={`/${recipe.pose.缩略图}`}
-                      alt={recipe.pose.姿势名称}
-                      className="h-11 w-9 shrink-0 rounded-lg object-cover"
-                    />
+                    <button type="button" aria-label="放大姿势参考图" className="flex min-h-11 min-w-11 shrink-0 cursor-zoom-in items-center justify-center rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => {
+                      const item = recipe.pose
+                      if (item) setZoomImageUrl(referenceImageUrl(item.原图 || item.缩略图))
+                    }}>
+                      <img
+                        src={referenceImageUrl(recipe.pose.缩略图)}
+                        alt={recipe.pose.姿势名称}
+                        className="h-11 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    </button>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] text-muted-foreground">姿势 · {recipe.pose.角度}</div>
-                      <div className="truncate text-xs font-medium">{recipe.pose.姿势名称}</div>
+                      <div className="text-xs text-muted-foreground">姿势{recipe.pose.source === 'upload' ? ' · 本机上传' : recipe.pose.角度 ? ` · ${recipe.pose.角度}` : ''}</div>
+                      <div className="truncate text-xs font-medium" title={recipe.pose.姿势名称}>{recipe.pose.姿势名称}</div>
                     </div>
                     <button
                       type="button"
+                      aria-label="清除姿势参考图"
                       onClick={() => setPose(null)}
-                      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <XIcon className="size-3.5" />
                     </button>
                   </>
                 ) : (
-                  <Link
-                    to="/poses"
-                    className="flex flex-1 items-center gap-2.5 py-0.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <PersonStandingIcon className="size-4" />
-                    </div>
-                    <span className="truncate text-xs">+ 选姿势</span>
-                  </Link>
+                  <>
+                    <Link
+                      to="/poses"
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <div className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <PersonStandingIcon className="size-4" />
+                      </div>
+                      <span className="truncate text-xs">+ 选姿势</span>
+                    </Link>
+                    <Button type="button" variant="ghost" size="sm" aria-label="上传姿势参考图" aria-describedby={showReferenceErrors && missingReferences.includes('姿势') ? 'reference-errors' : undefined} aria-busy={uploadingSlot === 'pose'} disabled={uploadingSlot !== null} className="h-11 shrink-0 border-l px-2 text-xs" onClick={() => { uploadSlotRef.current = 'pose'; slotInputRef.current?.click() }}>
+                      {uploadingSlot === 'pose' ? <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ImagePlusIcon className="size-3.5" />}
+                      {uploadingSlot === 'pose' ? '处理中' : '上传'}
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -476,35 +703,152 @@ function StudioPage() {
               </Select>
             </Field>
 
-            <Field label="模型 ID">
-              <Select
-                value={providerCfg.model}
-                onValueChange={(v) => updateProviderConfig(activeProvider, { model: v })}
-              >
-                <SelectTrigger className="w-full font-mono text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {providerMeta.models.map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="font-mono text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-
-            {providerCfg.model === 'custom' && (
-              <Field label="自定义模型 ID">
-                <Input
-                  value={providerCfg.customModel}
-                  onChange={(e) =>
-                    updateProviderConfig(activeProvider, { customModel: e.target.value })
-                  }
-                  placeholder="输入模型 ID"
-                  className="bg-background font-mono text-xs"
-                />
+            {activeProvider === 'comfyui' ? (
+              <Field label="工作流模板 (API 格式)">
+                <div className="space-y-2">
+                  <Select
+                    value={apiConfig.comfyuiParams.workflowPreset}
+                    onValueChange={(v) =>
+                      handleSelectComfyPreset(v as ComfyUiParams['workflowPreset'])
+                    }
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(COMFYUI_WORKFLOW_TEMPLATES) as ComfyPresetId[]).map((key) => (
+                        <SelectItem key={key} value={key} className="text-xs">
+                          {COMFYUI_WORKFLOW_TEMPLATES[key].label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom" className="text-xs">
+                        自定义工作流 (已导入 JSON)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex flex-wrap gap-1.5">
+                    <input
+                      ref={comfyFileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={handleComfyFileUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => comfyFileInputRef.current?.click()}
+                    >
+                      <FileUpIcon className="size-3.5" />
+                      导入 .json
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setShowComfyJsonModal(true)}
+                    >
+                      <CodeXmlIcon className="size-3.5" />
+                      编辑 JSON
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => void handleExportComfyJson()}
+                    >
+                      <DownloadIcon className="size-3.5" />
+                      导出 .json
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleCheckComfy}
+                      disabled={checkingComfy}
+                    >
+                      {checkingComfy ? (
+                        <LoaderCircleIcon className="size-3.5 animate-spin" />
+                      ) : (
+                        <ScanSearchIcon className="size-3.5" />
+                      )}
+                      检测本机模型
+                    </Button>
+                  </div>
+                  {comfyCheck && (
+                    <div
+                      className={`space-y-1 rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${
+                        comfyCheck.ok
+                          ? 'border-emerald-500/40 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300'
+                          : 'border-destructive/40 bg-destructive/10 text-destructive'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        {comfyCheck.ok ? (
+                          <CircleCheckIcon className="size-3.5" />
+                        ) : (
+                          <CircleAlertIcon className="size-3.5" />
+                        )}
+                        {comfyCheck.ok ? '工作流与本机模型/节点匹配，可以生成' : '检测未通过'}
+                      </div>
+                      {comfyCheck.info && <div className="opacity-80">{comfyCheck.info}</div>}
+                      {comfyCheck.errors.map((m, i) => (
+                        <div key={`e${i}`} className="whitespace-pre-wrap break-all">
+                          • {m}
+                        </div>
+                      ))}
+                      {comfyCheck.fixes.map((m, i) => (
+                        <div key={`f${i}`} className="break-all">
+                          ✓ {m}
+                        </div>
+                      ))}
+                      {comfyCheck.warnings.map((m, i) => (
+                        <div key={`w${i}`} className="break-all opacity-80">
+                          ! {m}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Field>
+            ) : (
+              <>
+                <Field label="模型 ID">
+                  <Select
+                    value={providerCfg.model}
+                    onValueChange={(v) => updateProviderConfig(activeProvider, { model: v })}
+                  >
+                    <SelectTrigger className="w-full font-mono text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerMeta.models.map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="font-mono text-xs">
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                {providerCfg.model === 'custom' && (
+                  <Field label="自定义模型 ID">
+                    <Input
+                      value={providerCfg.customModel}
+                      onChange={(e) =>
+                        updateProviderConfig(activeProvider, { customModel: e.target.value })
+                      }
+                      placeholder="输入模型 ID"
+                      className="bg-background font-mono text-xs"
+                    />
+                  </Field>
+                )}
+              </>
             )}
 
             <Field label="画风预设">
@@ -524,6 +868,94 @@ function StudioPage() {
                 </SelectContent>
               </Select>
             </Field>
+
+            {activeProvider === 'comfyui' && (
+              <>
+                {!parsedComfyNodes.valid && (
+                  <div className="col-span-full rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {parsedComfyNodes.error}
+                  </div>
+                )}
+
+                <Field label="人像图节点 (LoadImage)">
+                  <Select
+                    value={apiConfig.comfyuiParams.portraitNodeId}
+                    onValueChange={(v) => updateComfyUiParams({ portraitNodeId: v })}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">不绑定</SelectItem>
+                      {parsedComfyNodes.imageNodes.map((n) => (
+                        <SelectItem key={n.id} value={n.id} className="text-xs">
+                          #{n.id} {n.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field label="服装图节点 (LoadImage)">
+                  <Select
+                    value={apiConfig.comfyuiParams.costumeNodeId}
+                    onValueChange={(v) => updateComfyUiParams({ costumeNodeId: v })}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">不绑定</SelectItem>
+                      {parsedComfyNodes.imageNodes.map((n) => (
+                        <SelectItem key={n.id} value={n.id} className="text-xs">
+                          #{n.id} {n.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field label="姿势图节点 (LoadImage)">
+                  <Select
+                    value={apiConfig.comfyuiParams.poseNodeId}
+                    onValueChange={(v) => updateComfyUiParams({ poseNodeId: v })}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">不绑定</SelectItem>
+                      {parsedComfyNodes.imageNodes.map((n) => (
+                        <SelectItem key={n.id} value={n.id} className="text-xs">
+                          #{n.id} {n.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field label="正向提示词节点 (Prompt)">
+                  <Select
+                    value={apiConfig.comfyuiParams.promptNodeId}
+                    onValueChange={(v) => updateComfyUiParams({ promptNodeId: v })}
+                  >
+                    <SelectTrigger className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">保留工作流原提示词</SelectItem>
+                      {parsedComfyNodes.promptNodes.map((n) => (
+                        <SelectItem key={n.id} value={n.id} className="text-xs">
+                          #{n.id} {n.title} ({n.field})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            {activeProvider === 'comfyui' && showAdvanced && <WorkflowParameters onPreview={setZoomImageUrl} onUploadingChange={setUploadingSlot} />}
 
             {/* 展开的高级协议专属参数 */}
             {showAdvanced && (
@@ -796,86 +1228,80 @@ function StudioPage() {
 
                 {activeProvider === 'comfyui' && (
                   <>
-                    <Field label="输出尺寸（宽 × 高）">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          step={16}
-                          min={256}
-                          value={apiConfig.comfyuiParams.width}
-                          onChange={(e) => updateComfyuiParams({ width: Number(e.target.value) || 832 })}
-                          className="bg-background font-mono text-xs"
-                        />
-                        <span className="text-muted-foreground">×</span>
-                        <Input
-                          type="number"
-                          step={16}
-                          min={256}
-                          value={apiConfig.comfyuiParams.height}
-                          onChange={(e) => updateComfyuiParams({ height: Number(e.target.value) || 1216 })}
-                          className="bg-background font-mono text-xs"
-                        />
-                      </div>
+                    <Field label="三合一拼图节点 (可选)">
+                      <Select
+                        value={apiConfig.comfyuiParams.stitchedNodeId}
+                        onValueChange={(v) => updateComfyUiParams({ stitchedNodeId: v })}
+                      >
+                        <SelectTrigger className="w-full text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">不绑定</SelectItem>
+                          {parsedComfyNodes.imageNodes.map((n) => (
+                            <SelectItem key={n.id} value={n.id} className="text-xs">
+                              #{n.id} {n.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </Field>
-                    <Field label="步数 / CFG（FLUX 3 Distilled：16 步、CFG 1；Qwen Lightning：4 步、CFG 1）">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={apiConfig.comfyuiParams.steps}
-                          onChange={(e) => updateComfyuiParams({ steps: Number(e.target.value) || 16 })}
-                          className="bg-background font-mono text-xs"
-                        />
-                        <Input
-                          type="number"
-                          step={0.1}
-                          min={1}
-                          value={apiConfig.comfyuiParams.cfg}
-                          onChange={(e) => updateComfyuiParams({ cfg: Number(e.target.value) || 1 })}
-                          className="bg-background font-mono text-xs"
-                        />
-                      </div>
-                    </Field>
-                    <Field label="反向提示词">
+                    <Field label="最长等待时间（秒）">
                       <Input
-                        value={apiConfig.comfyuiParams.negativePrompt}
-                        onChange={(e) => updateComfyuiParams({ negativePrompt: e.target.value })}
-                        placeholder="可留空（Lightning 模式下 CFG=1 不使用）"
+                        type="number"
+                        min={60}
+                        step={60}
+                        value={apiConfig.comfyuiParams.timeoutSec}
+                        onChange={(e) =>
+                          updateComfyUiParams({ timeoutSec: Math.max(60, Number(e.target.value) || 600) })
+                        }
                         className="bg-background text-xs"
                       />
                     </Field>
-                    <p className="text-xs text-muted-foreground">
-                      模型文件名等进阶设置请至「API 配置」页调整。
-                    </p>
+                    <Field label="随机种子 (seed)">
+                      <div className="flex h-9 items-center justify-between rounded-xl border bg-background px-3">
+                        <span className="text-xs text-muted-foreground">
+                          {apiConfig.comfyuiParams.randomizeSeed ? '每次随机种子' : '固定工作流种子'}
+                        </span>
+                        <Switch
+                          checked={apiConfig.comfyuiParams.randomizeSeed}
+                          onCheckedChange={(v) => updateComfyUiParams({ randomizeSeed: v })}
+                        />
+                      </div>
+                    </Field>
                   </>
                 )}
 
-                <Field label="图片传参方式">
-                  <Select
-                    value={apiConfig.imagePassMode}
-                    onValueChange={(v) => updateApiConfig({ imagePassMode: v as ImagePassMode })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="url">URL</SelectItem>
-                      <SelectItem value="base64">Base64</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
+                {activeProvider !== 'comfyui' && (
+                  <>
+                    <Field label="图片传参方式">
+                      <Select
+                        value={apiConfig.imagePassMode}
+                        onValueChange={(v) => updateApiConfig({ imagePassMode: v as ImagePassMode })}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="url">URL</SelectItem>
+                          <SelectItem value="base64">Base64</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
 
-                <Field label="附带合成拼图">
-                  <div className="flex h-9 items-center justify-between rounded-xl border bg-background px-3">
-                    <span className="text-xs text-muted-foreground">
-                      {apiConfig.sendStitchedSheet ? '同时发送拼图' : '仅发单图序列'}
-                    </span>
-                    <Switch
-                      checked={apiConfig.sendStitchedSheet}
-                      onCheckedChange={(v) => updateApiConfig({ sendStitchedSheet: v })}
-                    />
-                  </div>
-                </Field>
+                    <Field label="附带合成拼图">
+                      <div className="flex h-9 items-center justify-between rounded-xl border bg-background px-3">
+                        <span className="text-xs text-muted-foreground">
+                          {apiConfig.sendStitchedSheet ? '同时发送拼图' : '仅发单图序列'}
+                        </span>
+                        <Switch
+                          checked={apiConfig.sendStitchedSheet}
+                          onCheckedChange={(v) => updateApiConfig({ sendStitchedSheet: v })}
+                        />
+                      </div>
+                    </Field>
+                  </>
+                )}
               </>
             )}
           </Section>
@@ -913,7 +1339,7 @@ function StudioPage() {
 
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating}
+              disabled={isGenerating || uploadingSlot !== null}
               className="h-11 w-full text-sm font-semibold"
             >
               {isGenerating ? (
@@ -939,7 +1365,7 @@ function StudioPage() {
             actions={
               previewUrl && !isGenerating ? (
                 <Button variant="outline" size="sm" asChild>
-                  <a href={previewUrl} download="character-result.png">
+                  <a href={previewUrl} download="image.png">
                     <DownloadIcon className="size-3.5" />
                     下载图片
                   </a>
@@ -960,10 +1386,36 @@ function StudioPage() {
                         {generatingModel}
                       </Badge>
                     )}
+                    {generationProgress && (
+                      <div className="w-56 space-y-1.5 pt-1">
+                        <div className="text-xs text-foreground/80">{generationProgress.message}</div>
+                        {generationProgress.percent !== undefined && (
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary transition-all"
+                              style={{ width: `${generationProgress.percent}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <p className="pt-1 text-xs text-muted-foreground">
                       切换页面不会中断当前任务
                     </p>
                   </div>
+                </div>
+              ) : generationError ? (
+                <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                  <CircleAlertIcon className="size-7 text-destructive" />
+                  <div className="text-sm font-semibold text-destructive">生成失败</div>
+                  <p className="whitespace-pre-wrap break-all text-left text-xs leading-relaxed text-muted-foreground">
+                    {generationError}
+                  </p>
+                  {previewUrl && (
+                    <Button variant="ghost" size="sm" onClick={() => setZoomImageUrl(previewUrl)}>
+                      查看上一张结果
+                    </Button>
+                  )}
                 </div>
               ) : previewUrl ? (
                 <img
@@ -1060,10 +1512,10 @@ function StudioPage() {
       <Dialog open={Boolean(zoomImageUrl)} onOpenChange={(o) => !o && setZoomImageUrl(null)}>
         <DialogContent className="max-h-[92vh] w-[95vw] max-w-4xl overflow-y-auto p-4 sm:max-w-4xl">
           <DialogHeader className="flex flex-row items-center justify-between pr-6">
-            <DialogTitle className="text-base">生成结果大图预览</DialogTitle>
+            <div><DialogTitle className="text-base">图片大图预览</DialogTitle><DialogDescription className="sr-only">参考图片或生成结果的放大预览。按 Esc 或关闭按钮返回。</DialogDescription></div>
             {zoomImageUrl && (
               <Button size="sm" variant="outline" asChild>
-                <a href={zoomImageUrl} download="character-result.png">
+                <a href={zoomImageUrl} download="image.png">
                   <DownloadIcon className="size-3.5" />
                   下载原图
                 </a>
@@ -1105,6 +1557,48 @@ function StudioPage() {
               />
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ComfyUI API 工作流 JSON 编辑器弹窗 */}
+      <Dialog open={showComfyJsonModal} onOpenChange={setShowComfyJsonModal}>
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-3xl overflow-y-auto p-4 sm:max-w-3xl">
+          <DialogHeader className="flex flex-row items-center justify-between pr-6">
+            <DialogTitle className="text-base">ComfyUI API 工作流 JSON</DialogTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const info = parseComfyWorkflowNodes(apiConfig.comfyuiParams.workflowJson)
+                if (!info.valid) {
+                  toast.error(info.error || '工作流 JSON 无效')
+                  return
+                }
+                const detected = autoDetectComfyMappings(apiConfig.comfyuiParams.workflowJson)
+                updateComfyUiParams(detected)
+                toast.success(
+                  `已自动重新识别节点：${info.imageNodes.length} 个图片节点、${info.promptNodes.length} 个提示词节点`
+                )
+              }}
+            >
+              自动识别节点
+            </Button>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            请在 ComfyUI 设置中开启「启用开发模式选项」，点击菜单中的「导出 (API)」获取 JSON 并粘贴于下方。
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void handleExportComfyJson(true)}>导出原始 API</Button>
+          <Textarea
+            value={apiConfig.comfyuiParams.workflowJson}
+            onChange={(e) =>
+              updateComfyUiParams({
+                workflowPreset: 'custom',
+                workflowJson: e.target.value,
+              })
+            }
+            rows={18}
+            className="font-mono text-xs leading-relaxed"
+          />
         </DialogContent>
       </Dialog>
     </>

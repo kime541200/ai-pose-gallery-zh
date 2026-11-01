@@ -1,14 +1,31 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { isNsfwCostume, isNsfwPose } from '@/api/gallery'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { idbGet, idbSet } from '@/lib/idbStorage'
+import { parseParameterWorkflow, workflowIdentity } from '@/lib/comfyWorkflowParameters'
+import { recipeBackup } from '@/lib/recipeImages'
 import {
   buildRecipePrompt,
+  COMFYUI_WORKFLOW_TEMPLATES,
+  DEFAULT_COMFY_PRESET,
   generateCharacterImage,
+  type GenerationProgress,
   PROVIDER_META,
   stitchRecipeCanvas,
 } from '@/services/aiGenerator'
 import type {
   ApiConfig,
+  ComfyUiParams,
   CostumeItem,
   DoubaoParams,
   ExtraReferenceImage,
@@ -20,13 +37,15 @@ import type {
   PoseItem,
   ProviderEndpointConfig,
   QwenParams,
-  ComfyuiParams,
   RecipeState,
 } from '@/types/gallery'
 
 const CFG_KEY = 'pose_atlas_api_config_v3'
 const RECIPE_KEY = 'pose_atlas_recipe_v3'
 const HISTORY_KEY = 'pose_atlas_history_v3'
+const SAFE_MODE_KEY = 'pose_atlas_safe_mode_v1'
+
+const COMFY_CONFIG_VERSION = 2
 
 const DEFAULT_API_CONFIG: ApiConfig = {
   activeProvider: 'gemini',
@@ -94,21 +113,53 @@ const DEFAULT_API_CONFIG: ApiConfig = {
     responseFormat: 'b64_json',
   },
   comfyuiParams: {
-    unet: 'flux3-image-klein-int8-convrot.safetensors',
-    clip: 'qwen3vl_4b_int8_convrot.safetensors',
-    vae: 'flux2-vae.safetensors',
-    lora: '',
-    width: 832,
-    height: 1216,
-    steps: 16,
-    cfg: 1,
-    negativePrompt: '',
+    workflowPreset: DEFAULT_COMFY_PRESET,
+    workflowJson: JSON.stringify(COMFYUI_WORKFLOW_TEMPLATES[DEFAULT_COMFY_PRESET].workflow, null, 2),
+    ...COMFYUI_WORKFLOW_TEMPLATES[DEFAULT_COMFY_PRESET].defaults,
+    randomizeSeed: true,
+    timeoutSec: 600,
+    configVersion: COMFY_CONFIG_VERSION,
   },
+}
+
+// v1 → v2：旧版默认预设或旧版结构自动迁移为默认 FLUX 3 Image Klein 工作流
+const LEGACY_COMFY_BASE_URLS = ['http://127.0.0.1:8188', 'http://localhost:8188']
+
+function migrateComfy(
+  provider: ApiConfig['providers']['comfyui'],
+  params: ApiConfig['comfyuiParams']
+): { provider: ApiConfig['providers']['comfyui']; params: ApiConfig['comfyuiParams'] } {
+  if ((params.configVersion ?? 1) >= COMFY_CONFIG_VERSION && params.workflowJson) return { provider, params }
+  const nextParams = { ...params, configVersion: COMFY_CONFIG_VERSION }
+  if (
+    !params.workflowPreset ||
+    !params.workflowJson ||
+    params.workflowPreset === 'qwen21_3img' ||
+    params.workflowPreset === 'qwen21_2img'
+  ) {
+    Object.assign(nextParams, {
+      workflowPreset: DEFAULT_COMFY_PRESET,
+      workflowJson: JSON.stringify(COMFYUI_WORKFLOW_TEMPLATES[DEFAULT_COMFY_PRESET].workflow, null, 2),
+      ...COMFYUI_WORKFLOW_TEMPLATES[DEFAULT_COMFY_PRESET].defaults,
+    })
+  }
+  const nextProvider = { ...provider }
+  if (!nextProvider.baseUrl.trim() || LEGACY_COMFY_BASE_URLS.includes(nextProvider.baseUrl.trim())) {
+    nextProvider.baseUrl = PROVIDER_META.comfyui.defaultBaseUrl
+  }
+  if (!PROVIDER_META.comfyui.models.some((m) => m.value === nextProvider.model)) {
+    nextProvider.model = PROVIDER_META.comfyui.models[0].value
+  }
+  return { provider: nextProvider, params: nextParams }
 }
 
 function mergeStoredConfig(raw: unknown): ApiConfig {
   if (!raw || typeof raw !== 'object') return DEFAULT_API_CONFIG
   const obj = raw as Partial<ApiConfig>
+  const comfy = migrateComfy(
+    { ...DEFAULT_API_CONFIG.providers.comfyui, ...obj.providers?.comfyui },
+    { ...DEFAULT_API_CONFIG.comfyuiParams, configVersion: 1, ...obj.comfyuiParams }
+  )
   return {
     ...DEFAULT_API_CONFIG,
     ...obj,
@@ -117,13 +168,13 @@ function mergeStoredConfig(raw: unknown): ApiConfig {
       gpt: { ...DEFAULT_API_CONFIG.providers.gpt, ...obj.providers?.gpt },
       qwen: { ...DEFAULT_API_CONFIG.providers.qwen, ...obj.providers?.qwen },
       doubao: { ...DEFAULT_API_CONFIG.providers.doubao, ...obj.providers?.doubao },
-      comfyui: { ...DEFAULT_API_CONFIG.providers.comfyui, ...obj.providers?.comfyui },
+      comfyui: comfy.provider,
     },
     gptParams: { ...DEFAULT_API_CONFIG.gptParams, ...obj.gptParams },
     geminiParams: { ...DEFAULT_API_CONFIG.geminiParams, ...obj.geminiParams },
     qwenParams: { ...DEFAULT_API_CONFIG.qwenParams, ...obj.qwenParams },
     doubaoParams: { ...DEFAULT_API_CONFIG.doubaoParams, ...obj.doubaoParams },
-    comfyuiParams: { ...DEFAULT_API_CONFIG.comfyuiParams, ...obj.comfyuiParams },
+    comfyuiParams: comfy.params,
   }
 }
 
@@ -131,6 +182,9 @@ interface StudioContextValue {
   recipe: RecipeState
   apiConfig: ApiConfig
   history: GenerationHistoryItem[]
+  safeMode: boolean
+  toggleSafeMode: () => void
+  requestUnlockNsfw: (onUnlocked?: () => void) => void
   // 全局持久化的合成台状态（切换页面不丢失、不断开请求）
   customPrompt: string | null
   setCustomPrompt: (val: string | null) => void
@@ -138,6 +192,8 @@ interface StudioContextValue {
   setPreviewUrl: (url: string) => void
   isGenerating: boolean
   generatingModel: string
+  generationProgress: GenerationProgress | null
+  generationError: string
   startGeneration: (overridePrompt?: string) => Promise<void>
   refreshStitchPreview: () => Promise<void>
   setPortrait: (item: PortraitItem | null) => void
@@ -149,6 +205,7 @@ interface StudioContextValue {
   addExtraImage: (item: { name: string; url: string }) => void
   removeExtraImage: (id: string) => void
   updateExtraImageName: (id: string, name: string) => void
+  setWorkflowImage: (nodeId: string, image: ExtraReferenceImage | null, identity: string) => void
   clearRecipe: () => void
   randomizeRecipe: (pools: { portraits?: PortraitItem[]; costumes?: CostumeItem[]; poses?: PoseItem[] }) => void
   updateApiConfig: (patch: Partial<ApiConfig>) => void
@@ -157,7 +214,7 @@ interface StudioContextValue {
   updateGeminiParams: (patch: Partial<GeminiParams>) => void
   updateQwenParams: (patch: Partial<QwenParams>) => void
   updateDoubaoParams: (patch: Partial<DoubaoParams>) => void
-  updateComfyuiParams: (patch: Partial<ComfyuiParams>) => void
+  updateComfyUiParams: (patch: Partial<ComfyUiParams>) => void
   addHistory: (item: Omit<GenerationHistoryItem, 'id' | 'createdAt'>) => void
   removeHistoryItem: (id: string) => void
   clearHistory: () => void
@@ -200,6 +257,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
   })
 
+  const [safeMode, setSafeMode] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(SAFE_MODE_KEY)
+      return raw === null ? true : raw !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [ageGateOpen, setAgeGateOpen] = useState(false)
+  const pendingUnlockCbRef = useRef<(() => void) | null>(null)
+
   // 提升到根部 Provider 的生成状态，路由切换不会卸载或中断
   const [customPrompt, setCustomPrompt] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string>(() => {
@@ -213,8 +281,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   })
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatingModel, setGeneratingModel] = useState('')
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null)
+  const [generationError, setGenerationError] = useState('')
   const isGeneratingRef = useRef(false)
-  const idbHydratedRef = useRef(false)
+  const [idbHydrated, setIdbHydrated] = useState(false)
 
   // 从 IndexedDB 异步恢复大容量历史记录与含附图的配方
   useEffect(() => {
@@ -229,6 +299,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           portrait: savedRecipe.portrait ?? null,
           costume: savedRecipe.costume ?? null,
           pose: savedRecipe.pose ?? null,
+          workflowImages: savedRecipe.workflowImages ?? {},
+          workflowImagesIdentity: savedRecipe.workflowImagesIdentity,
           extraImages: Array.isArray(savedRecipe.extraImages) ? savedRecipe.extraImages : [],
         })
       }
@@ -236,7 +308,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setHistory(savedHistory)
         setPreviewUrl((prev) => prev || savedHistory[0]?.imageUrl || '')
       }
-      idbHydratedRef.current = true
+      setIdbHydrated(true)
     })
     return () => {
       active = false
@@ -244,15 +316,16 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    if (!idbHydrated) return
     void idbSet(RECIPE_KEY, recipe)
     try {
-      // localStorage 仅保存轻量槽位备份，不存体积较大的 extraImages Base64
+      // 上传图片和附图完整保存在 IndexedDB，轻量备份不包含它们。
       localStorage.setItem(
         RECIPE_KEY,
-        JSON.stringify({ ...recipe, extraImages: [] })
+        JSON.stringify(recipeBackup(recipe))
       )
     } catch {}
-  }, [recipe])
+  }, [recipe, idbHydrated])
 
   useEffect(() => {
     try {
@@ -261,9 +334,42 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [apiConfig])
 
   useEffect(() => {
-    if (!idbHydratedRef.current && history.length === 0) return
+    try {
+      localStorage.setItem(SAFE_MODE_KEY, String(safeMode))
+    } catch {}
+  }, [safeMode])
+
+  const requestUnlockNsfw = (onUnlocked?: () => void) => {
+    if (!safeMode) {
+      onUnlocked?.()
+      return
+    }
+    pendingUnlockCbRef.current = onUnlocked || null
+    setAgeGateOpen(true)
+  }
+
+  const confirmUnlockNsfw = () => {
+    setSafeMode(false)
+    setAgeGateOpen(false)
+    toast.success('已解锁 18+ 完整图库模式')
+    const cb = pendingUnlockCbRef.current
+    pendingUnlockCbRef.current = null
+    cb?.()
+  }
+
+  const toggleSafeMode = () => {
+    if (safeMode) {
+      requestUnlockNsfw()
+    } else {
+      setSafeMode(true)
+      toast.success('已开启安全模式（已隐藏 18+ 敏感分类）')
+    }
+  }
+
+  useEffect(() => {
+    if (!idbHydrated) return
     void idbSet(HISTORY_KEY, history.slice(0, 30))
-  }, [history])
+  }, [history, idbHydrated])
 
   const setPortrait = (portrait: PortraitItem | null) => setRecipe((r) => ({ ...r, portrait }))
   const setCostume = (costume: CostumeItem | null) => setRecipe((r) => ({ ...r, costume }))
@@ -320,23 +426,55 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }))
   }
 
+  const setWorkflowImage = (nodeId: string, image: ExtraReferenceImage | null, identity: string) => {
+    if (identity !== workflowIdentity(apiConfig.comfyuiParams.workflowJson)) return
+    setRecipe((r) => {
+      const workflowImages = r.workflowImagesIdentity === identity ? { ...r.workflowImages } : {}
+      if (image) workflowImages[nodeId] = image
+      else delete workflowImages[nodeId]
+      return { ...r, workflowImages, workflowImagesIdentity: identity }
+    })
+  }
+
+  const activeComfyParams = apiConfig.comfyuiParams
+  useEffect(() => {
+    if (!idbHydrated) return
+    const cp = activeComfyParams
+    const identity = workflowIdentity(cp.workflowJson)
+    const workflow = parseParameterWorkflow(cp.workflowJson)
+    const mapped = [cp.portraitNodeId, cp.costumeNodeId, cp.poseNodeId, cp.stitchedNodeId]
+    const ids = new Set(Object.entries(workflow || {}).filter(([id, node]) => !mapped.includes(id) && typeof node.inputs.image === 'string').map(([id]) => id))
+    // IndexedDB 恢复与工作流变更同步时清理失效映射。
+    // oxlint-disable-next-line react/set-state-in-effect
+    setRecipe((r) => {
+      const entries = Object.entries(r.workflowImages || {})
+      const kept = r.workflowImagesIdentity === identity ? entries.filter(([id]) => ids.has(id)) : []
+      if (entries.length === kept.length && r.workflowImagesIdentity === identity) return r
+      return { ...r, workflowImages: Object.fromEntries(kept), workflowImagesIdentity: identity }
+    })
+  }, [activeComfyParams, idbHydrated])
+
   const clearRecipe = () => {
     setRecipe({ portrait: null, costume: null, pose: null, extraImages: [] })
     toast.success('已清空配方')
   }
 
   const randomizeRecipe = (pools: { portraits?: PortraitItem[]; costumes?: CostumeItem[]; poses?: PoseItem[] }) => {
+    const posePool = safeMode ? (pools.poses || []).filter((p) => !isNsfwPose(p)) : pools.poses || []
+    const costumePool = safeMode ? (pools.costumes || []).filter((c) => !isNsfwCostume(c)) : pools.costumes || []
+    const portraitPool = pools.portraits || []
+
     setRecipe((prev) => ({
       ...prev,
-      portrait: pools.portraits?.length
-        ? pools.portraits[Math.floor(Math.random() * pools.portraits.length)]
+      portrait: portraitPool.length
+        ? portraitPool[Math.floor(Math.random() * portraitPool.length)]
         : prev.portrait,
-      costume: pools.costumes?.length
-        ? pools.costumes[Math.floor(Math.random() * pools.costumes.length)]
+      costume: costumePool.length
+        ? costumePool[Math.floor(Math.random() * costumePool.length)]
         : prev.costume,
-      pose: pools.poses?.length ? pools.poses[Math.floor(Math.random() * pools.poses.length)] : prev.pose,
+      pose: posePool.length ? posePool[Math.floor(Math.random() * posePool.length)] : prev.pose,
     }))
-    toast.success('已随机抽取一套角色配方')
+    toast.success(safeMode ? '已随机抽取一套角色配方（安全模式）' : '已随机抽取一套角色配方')
   }
 
   const updateApiConfig = (patch: Partial<ApiConfig>) => {
@@ -368,12 +506,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setApiConfig((prev) => ({ ...prev, qwenParams: { ...prev.qwenParams, ...patch } }))
   }
 
-  const updateComfyuiParams = (patch: Partial<ComfyuiParams>) => {
-    setApiConfig((prev) => ({ ...prev, comfyuiParams: { ...prev.comfyuiParams, ...patch } }))
-  }
-
   const updateDoubaoParams = (patch: Partial<DoubaoParams>) => {
     setApiConfig((prev) => ({ ...prev, doubaoParams: { ...prev.doubaoParams, ...patch } }))
+  }
+
+  const updateComfyUiParams = (patch: Partial<ComfyUiParams>) => {
+    setApiConfig((prev) => ({ ...prev, comfyuiParams: { ...prev.comfyuiParams, ...patch } }))
   }
 
   const addHistory = (item: Omit<GenerationHistoryItem, 'id' | 'createdAt'>) => {
@@ -412,27 +550,35 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const recipeSnapshot = recipe
     const configSnapshot = apiConfig
     const pCfg = configSnapshot.providers[configSnapshot.activeProvider]
-    const modelName = pCfg.model === 'custom' ? pCfg.customModel || 'custom' : pCfg.model
+    const modelName = configSnapshot.activeProvider === 'comfyui'
+      ? 'ComfyUI 工作流'
+      : pCfg.model === 'custom' ? pCfg.customModel || 'custom' : pCfg.model
     const finalPrompt =
-      overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset)
+      overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset, configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson) ? Object.values(recipeSnapshot.workflowImages || {}) : [])
 
     isGeneratingRef.current = true
     setIsGenerating(true)
     setGeneratingModel(modelName)
+    setGenerationError('')
+    setGenerationProgress(null)
 
     try {
       const { imageUrl, modelUsed, providerUsed } = await generateCharacterImage({
         recipe: recipeSnapshot,
         prompt: finalPrompt,
         config: configSnapshot,
+        onProgress: setGenerationProgress,
       })
       setPreviewUrl(imageUrl)
       const extraCount = (recipeSnapshot.extraImages || []).length
       const summary = [
         recipeSnapshot.portrait?.发型名称,
-        recipeSnapshot.costume?.分类,
-        recipeSnapshot.pose ? `${recipeSnapshot.pose.姿势名称}(${recipeSnapshot.pose.角度})` : null,
+        recipeSnapshot.costume?.source === 'upload' ? recipeSnapshot.costume.服装名称 : recipeSnapshot.costume?.分类,
+        recipeSnapshot.pose ? `${recipeSnapshot.pose.姿势名称}${recipeSnapshot.pose.角度 ? `(${recipeSnapshot.pose.角度})` : ''}` : null,
         extraCount ? `+${extraCount}附图` : null,
+        ...(configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson)
+          ? Object.values(recipeSnapshot.workflowImages || {}).filter((image) => image?.url).map((image) => image.role === 'character_sheet' ? '角色设定集' : image.name)
+          : []),
       ]
         .filter(Boolean)
         .join(' + ')
@@ -445,10 +591,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       })
       toast.success(`角色图生成完成 (${modelUsed})`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '调用失败')
+      const msg = e instanceof Error ? e.message : '调用失败'
+      setGenerationError(msg)
+      toast.error(msg.split('\n')[0])
     } finally {
       isGeneratingRef.current = false
       setIsGenerating(false)
+      setGenerationProgress(null)
     }
   }
 
@@ -458,12 +607,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         recipe,
         apiConfig,
         history,
+        safeMode,
+        toggleSafeMode,
+        requestUnlockNsfw,
         customPrompt,
         setCustomPrompt,
         previewUrl,
         setPreviewUrl,
         isGenerating,
         generatingModel,
+        generationProgress,
+        generationError,
         startGeneration,
         refreshStitchPreview,
         setPortrait,
@@ -475,6 +629,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         addExtraImage,
         removeExtraImage,
         updateExtraImageName,
+        setWorkflowImage,
         clearRecipe,
         randomizeRecipe,
         updateApiConfig,
@@ -483,13 +638,48 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         updateGeminiParams,
         updateQwenParams,
         updateDoubaoParams,
-        updateComfyuiParams,
+        updateComfyUiParams,
         addHistory,
         removeHistoryItem,
         clearHistory,
       }}
     >
       {children}
+
+      <AlertDialog open={ageGateOpen} onOpenChange={setAgeGateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>🔞 年龄确认与免责声明（NSFW 18+）</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-left leading-relaxed">
+              <span className="block">
+                关闭「安全模式 (SFW)」后，图库将显示包含成人向艺术参考的敏感分类：
+              </span>
+              <span className="block rounded-lg bg-muted p-2.5 text-xs text-foreground">
+                • <strong>动作姿势库</strong>：全身单人・性感系（399 张）、双人缠绵（275 张）
+                <br />• <strong>服装穿搭库</strong>：内衣・睡衣（199 套）、性感穿搭（140 套）
+              </span>
+              <span className="block text-xs">
+                <strong>免责声明</strong>：
+                <br />1. <strong>年龄限制</strong>：未满 18 周岁的未成年人严禁关闭安全模式或浏览上述敏感分类。
+                <br />2. <strong>来源说明</strong>：图鉴素材源自原作者 ギア（@giaaibusi）公开分享，仅供个人学习交流，严禁商业倒卖。
+                <br />3. <strong>合法使用</strong>：本工具与素材<strong>仅供 AI 绘画学习与合法艺术创作使用，严禁用于任何违法违规、色情传播或侵害他人肖像权（如未经授权的真人换脸）等用途</strong>，使用者须自行承担一切法律责任。
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                pendingUnlockCbRef.current = null
+              }}
+            >
+              保持安全模式
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUnlockNsfw}>
+              我已年满 18 岁并同意免责声明
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </StudioContext.Provider>
   )
 }

@@ -98,6 +98,23 @@ function localAssetsAndProxyPlugin(): Plugin {
   }
 }
 
+// 本地 ComfyUI 同源代理：浏览器请求 /comfy/* → ComfyUI（默认 8188）
+// 这样无需修改 ComfyUI 的 --enable-cors-header 白名单。可用环境变量 COMFYUI_UPSTREAM 或 COMFYUI_URL 指定其他地址。
+const COMFYUI_URL = process.env.COMFYUI_UPSTREAM || process.env.COMFYUI_URL || 'http://127.0.0.1:8188'
+const comfyProxy = {
+  '/comfy': {
+    target: COMFYUI_URL,
+    changeOrigin: true,
+    ws: true,
+    rewrite: (p: string) => p.replace(/^\/comfy/, '') || '/',
+    configure: (proxy: any) => {
+      // ComfyUI 对带 Origin 的跨源请求做校验，代理转发时去掉浏览器 Origin，按同源请求处理
+      proxy.on('proxyReq', (proxyReq: any) => proxyReq.removeHeader('origin'))
+      proxy.on('proxyReqWs', (proxyReq: any) => proxyReq.removeHeader('origin'))
+    },
+  },
+}
+
 export default defineConfig({
   publicDir: false,
   plugins: [
@@ -124,13 +141,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // 與 deploy/nginx.conf.template 的 /comfy/ 對應：開發時轉發到本機 ComfyUI
-    proxy: {
-      '/comfy': {
-        target: process.env.COMFYUI_UPSTREAM || 'http://127.0.0.1:8188',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/comfy/, ''),
-      },
-    },
+    proxy: comfyProxy,
+  },
+  preview: {
+    proxy: comfyProxy,
   },
 })

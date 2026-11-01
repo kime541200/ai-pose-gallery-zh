@@ -136,10 +136,10 @@ function SettingsPage() {
             </p>
             {(
               [
-                ['unet', 'Qwen-Image-Edit-2509 GGUF（models/unet）'],
+                ['unet', '扩散模型（models/diffusion_models 或 models/unet）'],
                 ['clip', '文本编码器（models/text_encoders）'],
                 ['vae', 'VAE（models/vae）'],
-                ['lora', 'Lightning 加速 LoRA（models/loras，留空则不使用）'],
+                ['lora', '加速 LoRA（models/loras，僅 Qwen-Edit 使用，FLUX 3 留空）'],
               ] as const
             ).map(([key, label]) => (
               <Field key={key} label={label}>

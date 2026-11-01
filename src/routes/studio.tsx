@@ -817,13 +817,13 @@ function StudioPage() {
                         />
                       </div>
                     </Field>
-                    <Field label="步数 / CFG（Lightning LoRA：4 步、CFG 1）">
+                    <Field label="步数 / CFG（FLUX 3 Distilled：16 步、CFG 1；Qwen Lightning：4 步、CFG 1）">
                       <div className="flex items-center gap-2">
                         <Input
                           type="number"
                           min={1}
                           value={apiConfig.comfyuiParams.steps}
-                          onChange={(e) => updateComfyuiParams({ steps: Number(e.target.value) || 4 })}
+                          onChange={(e) => updateComfyuiParams({ steps: Number(e.target.value) || 16 })}
                           className="bg-background font-mono text-xs"
                         />
                         <Input

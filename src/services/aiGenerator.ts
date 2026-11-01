@@ -84,7 +84,10 @@ export const PROVIDER_META: Record<
     // 同源路徑：由 nginx（Docker）或 Vite dev server 轉發到使用者自己的 ComfyUI，無需 API Key
     defaultBaseUrl: '/comfy',
     docUrl: 'https://github.com/Comfy-Org/ComfyUI',
-    models: [{ value: 'qwen-image-edit-2509', label: 'Qwen-Image-Edit-2509（本地工作流）' }],
+    models: [
+      { value: 'flux3-image-klein', label: 'FLUX 3 Image Klein Distilled（默认推荐）' },
+      { value: 'qwen-image-edit-2509', label: 'Qwen-Image-Edit-2509（备选工作流）' },
+    ],
   },
 }
 
@@ -453,6 +456,7 @@ export async function generateCharacterImage(params: {
     const imageDataUrls = await Promise.all(rawSources.map(srcToPngDataUrl))
     const imageUrl = await generateWithComfyUI({
       baseUrl,
+      model,
       prompt,
       imageDataUrls,
       poseSlotIndex,

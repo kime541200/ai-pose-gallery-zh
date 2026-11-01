@@ -395,11 +395,20 @@ async function smartFetch(
   }
   const headers = new Headers(init.headers)
   headers.set('x-target-url', targetUrl)
-  return fetch('/api/proxy', {
+  const proxyRes = await fetch('/api/proxy', {
     method: init.method || 'POST',
     headers,
     body: init.body,
   })
+  // 若开启代理时遇到 Cloudflare 网关/SSL 握手错误（如 525/502/504），且上游本身支持 CORS（如第三方中转站），自动降级浏览器直连重试
+  if (proxyRes.status === 502 || proxyRes.status === 504 || (proxyRes.status >= 520 && proxyRes.status <= 526)) {
+    try {
+      return await fetch(targetUrl, init)
+    } catch {
+      return proxyRes
+    }
+  }
+  return proxyRes
 }
 
 function extractUniversalImage(json: any): string | null {

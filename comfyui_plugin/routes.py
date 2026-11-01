@@ -45,12 +45,16 @@ def find_item(lib: str, item_id: str) -> dict:
 
 
 def resolve_safe_image_path(rel_path: str) -> Path:
-    clean = (rel_path or "").strip().lstrip("/")
+    clean = (rel_path or "").strip().replace("\\", "/").lstrip("/")
     candidate = (ROOT_DIR / clean).resolve()
-    if not (
-        str(candidate).startswith(str(THUMBS_DIR) + "/")
-        or str(candidate).startswith(str(IMG_DIR) + "/")
-    ):
+    try:
+        is_safe = candidate.is_relative_to(THUMBS_DIR) or candidate.is_relative_to(IMG_DIR)
+    except AttributeError:
+        cand_posix = candidate.as_posix()
+        thumbs_prefix = THUMBS_DIR.as_posix().rstrip("/") + "/"
+        img_prefix = IMG_DIR.as_posix().rstrip("/") + "/"
+        is_safe = cand_posix.startswith(thumbs_prefix) or cand_posix.startswith(img_prefix)
+    if not is_safe:
         raise ValueError("非法图片路径")
     if not candidate.is_file():
         raise FileNotFoundError(f"图片文件不存在: {clean}")

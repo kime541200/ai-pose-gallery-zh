@@ -3,6 +3,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
+import { I18nProvider } from '@/i18n'
 import { StudioProvider } from '@/store/studioStore'
 import { routeTree } from './routeTree.gen'
 import './index.css'
@@ -31,17 +32,20 @@ declare module '@tanstack/react-router' {
   }
   interface StaticDataRouteOption {
     title?: string
+    titleEn?: string
   }
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <StudioProvider>
-          <RouterProvider router={router} />
-        </StudioProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <I18nProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <StudioProvider>
+            <RouterProvider router={router} />
+          </StudioProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </I18nProvider>
   </StrictMode>
 )

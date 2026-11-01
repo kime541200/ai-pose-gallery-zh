@@ -1,23 +1,39 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation } from '@tanstack/react-router'
-import { CopyIcon, DicesIcon, LoaderCircleIcon, PersonStandingIcon, ShirtIcon, SparklesIcon, Trash2Icon, UserRoundIcon, XIcon } from 'lucide-react'
+import {
+  CopyIcon,
+  DicesIcon,
+  LoaderCircleIcon,
+  PersonStandingIcon,
+  ShirtIcon,
+  SparklesIcon,
+  Trash2Icon,
+  UserRoundIcon,
+  XIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
-import { referenceImageUrl } from '@/lib/recipeImages'
-import { workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n'
+import { workflowIdentity } from '@/lib/comfyWorkflowParameters'
+import { referenceImageUrl } from '@/lib/recipeImages'
 import { buildRecipePrompt } from '@/services/aiGenerator'
 import { useStudio } from '@/store/studioStore'
 
 export function RecipeDock() {
   const { pathname } = useLocation()
-  const { recipe, apiConfig, isGenerating, setPortrait, setCostume, setPose, clearRecipe, randomizeRecipe } = useStudio()
+  const { recipe, apiConfig, isGenerating, setPortrait, setCostume, setPose, clearRecipe, randomizeRecipe } =
+    useStudio()
+  const { locale, t, portrait: locPortrait, costume: locCostume, pose: locPose } = useI18n()
   const qc = useQueryClient()
   const extraCount = (recipe.extraImages || []).length
-  const workflowImages = apiConfig.activeProvider === 'comfyui' && recipe.workflowImagesIdentity === workflowIdentity(apiConfig.comfyuiParams.workflowJson) ? Object.values(recipe.workflowImages || {}) : []
+  const workflowImages =
+    apiConfig.activeProvider === 'comfyui' &&
+    recipe.workflowImagesIdentity === workflowIdentity(apiConfig.comfyuiParams.workflowJson)
+      ? Object.values(recipe.workflowImages || {})
+      : []
   const count = [recipe.portrait, recipe.costume, recipe.pose].filter(Boolean).length + extraCount + workflowImages.length
 
-  // 在合成台、设置页、指南页隐藏底部悬浮栏，避免与页面内组件重复
   if (pathname.startsWith('/studio') || pathname.startsWith('/settings') || pathname.startsWith('/guide')) {
     return null
   }
@@ -36,10 +52,14 @@ export function RecipeDock() {
   }
 
   const handleCopyPrompt = async () => {
-    const text = buildRecipePrompt(recipe, apiConfig.stylePreset, workflowImages)
+    const text = buildRecipePrompt(recipe, apiConfig.stylePreset, workflowImages, locale)
     await navigator.clipboard.writeText(text)
-    toast.success('已复制提示词')
+    toast.success(t('已複製提示詞', 'Prompt copied to clipboard'))
   }
+
+  const pLoc = recipe.portrait ? locPortrait(recipe.portrait) : null
+  const cLoc = recipe.costume ? locCostume(recipe.costume) : null
+  const poseLoc = recipe.pose ? locPose(recipe.pose) : null
 
   return (
     <div className="sticky bottom-3 z-30 mx-auto mt-4 w-full max-w-5xl">
@@ -47,15 +67,15 @@ export function RecipeDock() {
         <div className="grid flex-1 grid-cols-3 gap-1.5 sm:gap-2">
           {/* Slot 1: Portrait */}
           <div className="relative flex items-center gap-1.5 rounded-xl bg-muted/80 p-1.5 sm:gap-2 sm:p-2">
-            {recipe.portrait ? (
+            {recipe.portrait && pLoc ? (
               <>
                 <img
                   src={referenceImageUrl(recipe.portrait.缩略图)}
-                  alt={recipe.portrait.标题}
+                  alt={pLoc.title}
                   className="h-8 w-7 shrink-0 rounded-md object-cover sm:h-10 sm:w-8"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium sm:text-xs">{recipe.portrait.发型名称}</div>
+                  <div className="truncate text-[11px] font-medium sm:text-xs">{pLoc.styleName}</div>
                 </div>
                 <button
                   type="button"
@@ -66,26 +86,29 @@ export function RecipeDock() {
                 </button>
               </>
             ) : (
-              <Link to="/portraits" className="flex flex-1 items-center gap-1.5 text-muted-foreground hover:text-foreground">
+              <Link
+                to="/portraits"
+                className="flex flex-1 items-center gap-1.5 text-muted-foreground hover:text-foreground"
+              >
                 <div className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md bg-background/80 sm:h-10 sm:w-8">
                   <UserRoundIcon className="size-3.5" />
                 </div>
-                <span className="truncate text-[11px] sm:text-xs">人像</span>
+                <span className="truncate text-[11px] sm:text-xs">{t('人像', 'Portrait')}</span>
               </Link>
             )}
           </div>
 
           {/* Slot 2: Costume */}
           <div className="relative flex items-center gap-1.5 rounded-xl bg-muted/80 p-1.5 sm:gap-2 sm:p-2">
-            {recipe.costume ? (
+            {recipe.costume && cLoc ? (
               <>
                 <img
                   src={referenceImageUrl(recipe.costume.缩略图)}
-                  alt={recipe.costume.服装名称}
+                  alt={cLoc.name}
                   className="h-8 w-7 shrink-0 rounded-md object-cover sm:h-10 sm:w-8"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium sm:text-xs">{recipe.costume.服装名称}</div>
+                  <div className="truncate text-[11px] font-medium sm:text-xs">{cLoc.name}</div>
                 </div>
                 <button
                   type="button"
@@ -96,26 +119,29 @@ export function RecipeDock() {
                 </button>
               </>
             ) : (
-              <Link to="/costumes" className="flex flex-1 items-center gap-1.5 text-muted-foreground hover:text-foreground">
+              <Link
+                to="/costumes"
+                className="flex flex-1 items-center gap-1.5 text-muted-foreground hover:text-foreground"
+              >
                 <div className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md bg-background/80 sm:h-10 sm:w-8">
                   <ShirtIcon className="size-3.5" />
                 </div>
-                <span className="truncate text-[11px] sm:text-xs">服装</span>
+                <span className="truncate text-[11px] sm:text-xs">{t('服裝', 'Costume')}</span>
               </Link>
             )}
           </div>
 
           {/* Slot 3: Pose */}
           <div className="relative flex items-center gap-1.5 rounded-xl bg-muted/80 p-1.5 sm:gap-2 sm:p-2">
-            {recipe.pose ? (
+            {recipe.pose && poseLoc ? (
               <>
                 <img
                   src={referenceImageUrl(recipe.pose.缩略图)}
-                  alt={recipe.pose.姿势名称}
+                  alt={poseLoc.name}
                   className="h-8 w-7 shrink-0 rounded-md object-cover sm:h-10 sm:w-8"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium sm:text-xs">{recipe.pose.姿势名称}</div>
+                  <div className="truncate text-[11px] font-medium sm:text-xs">{poseLoc.name}</div>
                 </div>
                 <button
                   type="button"
@@ -130,7 +156,7 @@ export function RecipeDock() {
                 <div className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md bg-background/80 sm:h-10 sm:w-8">
                   <PersonStandingIcon className="size-3.5" />
                 </div>
-                <span className="truncate text-[11px] sm:text-xs">姿势</span>
+                <span className="truncate text-[11px] sm:text-xs">{t('姿勢', 'Pose')}</span>
               </Link>
             )}
           </div>
@@ -139,13 +165,13 @@ export function RecipeDock() {
         <div className="flex items-center justify-end gap-1.5">
           <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs" onClick={handleRandom}>
             <DicesIcon className="size-3.5" />
-            随机
+            {t('隨機', 'Random')}
           </Button>
           {count > 0 && (
             <>
               <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs" onClick={handleCopyPrompt}>
                 <CopyIcon className="size-3.5" />
-                <span className="hidden md:inline">复制词</span>
+                <span className="hidden md:inline">{t('複製詞', 'Copy Prompt')}</span>
               </Button>
               <Button variant="ghost" size="icon" className="size-8" onClick={clearRecipe}>
                 <Trash2Icon className="size-3.5" />
@@ -157,12 +183,12 @@ export function RecipeDock() {
               {isGenerating ? (
                 <>
                   <LoaderCircleIcon className="size-3.5 animate-spin" />
-                  生成中…
+                  {t('生成中…', 'Generating…')}
                 </>
               ) : (
                 <>
                   <SparklesIcon className="size-3.5" />
-                  合成 ({count})
+                  {t(`合成 (${count})`, `Studio (${count})`)}
                 </>
               )}
             </Link>

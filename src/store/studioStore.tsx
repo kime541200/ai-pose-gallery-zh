@@ -11,6 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { getCurrentLocale, tr, useI18n } from '@/i18n'
+import { localizeCostume, localizePortrait, localizePose } from '@/i18n/galleryData'
 import { idbGet, idbSet } from '@/lib/idbStorage'
 import { parseParameterWorkflow, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { recipeBackup } from '@/lib/recipeImages'
@@ -223,6 +225,7 @@ interface StudioContextValue {
 const StudioContext = createContext<StudioContextValue | null>(null)
 
 export function StudioProvider({ children }: { children: ReactNode }) {
+  const { locale, t } = useI18n()
   const [recipe, setRecipe] = useState<RecipeState>(() => {
     try {
       const raw = localStorage.getItem(RECIPE_KEY)
@@ -351,7 +354,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const confirmUnlockNsfw = () => {
     setSafeMode(false)
     setAgeGateOpen(false)
-    toast.success('已解锁 18+ 完整图库模式')
+    toast.success(tr('已解鎖 18+ 完整圖庫模式', 'Unlocked 18+ full gallery mode'))
     const cb = pendingUnlockCbRef.current
     pendingUnlockCbRef.current = null
     cb?.()
@@ -362,7 +365,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       requestUnlockNsfw()
     } else {
       setSafeMode(true)
-      toast.success('已开启安全模式（已隐藏 18+ 敏感分类）')
+      toast.success(tr('已開啟安全模式（已隱藏 18+ 敏感分類）', 'Safe mode enabled (18+ sensitive categories hidden)'))
     }
   }
 
@@ -378,7 +381,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const togglePortrait = (item: PortraitItem) => {
     setRecipe((r) => {
       const remove = r.portrait?.id === item.id
-      toast.success(remove ? '已移除人像' : `已选人像：${item.发型名称}`)
+      const loc = localizePortrait(item, getCurrentLocale())
+      toast.success(
+        remove
+          ? tr('已移除人像', 'Removed portrait')
+          : tr(`已選人像：${loc.styleName}`, `Selected portrait: ${loc.styleName}`)
+      )
       return { ...r, portrait: remove ? null : item }
     })
   }
@@ -386,7 +394,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const toggleCostume = (item: CostumeItem) => {
     setRecipe((r) => {
       const remove = r.costume?.id === item.id
-      toast.success(remove ? '已移除服装' : `已选服装：${item.服装名称}`)
+      const loc = localizeCostume(item, getCurrentLocale())
+      toast.success(
+        remove
+          ? tr('已移除服裝', 'Removed costume')
+          : tr(`已選服裝：${loc.name}`, `Selected costume: ${loc.name}`)
+      )
       return { ...r, costume: remove ? null : item }
     })
   }
@@ -394,7 +407,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const togglePose = (item: PoseItem) => {
     setRecipe((r) => {
       const remove = r.pose?.id === item.id
-      toast.success(remove ? '已移除姿势' : `已选姿势：${item.姿势名称}（${item.角度}）`)
+      const loc = localizePose(item, getCurrentLocale())
+      toast.success(
+        remove
+          ? tr('已移除姿勢', 'Removed pose')
+          : tr(
+              `已選姿勢：${loc.name}${loc.angle ? `（${loc.angle}）` : ''}`,
+              `Selected pose: ${loc.name}${loc.angle ? ` (${loc.angle})` : ''}`
+            )
+      )
       return { ...r, pose: remove ? null : item }
     })
   }
@@ -402,14 +423,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const addExtraImage = (item: { name: string; url: string }) => {
     const newImg: ExtraReferenceImage = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name: item.name || '附加参考',
+      name: item.name || tr('附加參考', 'Extra Reference'),
       url: item.url,
     }
     setRecipe((r) => ({
       ...r,
       extraImages: [...(r.extraImages || []), newImg],
     }))
-    toast.success('已添加附加参考图')
+    toast.success(tr('已加入附加參考圖', 'Added extra reference image'))
   }
 
   const removeExtraImage = (id: string) => {
@@ -456,7 +477,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const clearRecipe = () => {
     setRecipe({ portrait: null, costume: null, pose: null, extraImages: [] })
-    toast.success('已清空配方')
+    toast.success(tr('已清空配方', 'Cleared recipe'))
   }
 
   const randomizeRecipe = (pools: { portraits?: PortraitItem[]; costumes?: CostumeItem[]; poses?: PoseItem[] }) => {
@@ -474,7 +495,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         : prev.costume,
       pose: posePool.length ? posePool[Math.floor(Math.random() * posePool.length)] : prev.pose,
     }))
-    toast.success(safeMode ? '已随机抽取一套角色配方（安全模式）' : '已随机抽取一套角色配方')
+    toast.success(
+      safeMode
+        ? tr('已隨機抽取一套角色配方（安全模式）', 'Randomized character recipe (Safe Mode)')
+        : tr('已隨機抽取一套角色配方', 'Randomized character recipe')
+    )
   }
 
   const updateApiConfig = (patch: Partial<ApiConfig>) => {
@@ -523,7 +548,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const removeHistoryItem = (id: string) => {
     setHistory((prev) => prev.filter((x) => x.id !== id))
-    toast.success('已删除该条记录')
+    toast.success(tr('已刪除該條記錄', 'Deleted history item'))
   }
 
   const clearHistory = () => {
@@ -532,16 +557,16 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem(HISTORY_KEY)
     } catch {}
-    toast.success('已清空记录')
+    toast.success(tr('已清空記錄', 'Cleared history'))
   }
 
   const refreshStitchPreview = async () => {
     try {
       const url = await stitchRecipeCanvas(recipe)
       setPreviewUrl(url)
-      toast.success('已合成参考拼图')
+      toast.success(tr('已合成參考拼圖', 'Synthesized reference sheet'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '拼图失败')
+      toast.error(e instanceof Error ? e.message : tr('拼圖失敗', 'Failed to stitch reference sheet'))
     }
   }
 
@@ -551,7 +576,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const configSnapshot = apiConfig
     const pCfg = configSnapshot.providers[configSnapshot.activeProvider]
     const modelName = configSnapshot.activeProvider === 'comfyui'
-      ? 'ComfyUI 工作流'
+      ? tr('ComfyUI 工作流', 'ComfyUI Workflow')
       : pCfg.model === 'custom' ? pCfg.customModel || 'custom' : pCfg.model
     const finalPrompt =
       overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset, configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson) ? Object.values(recipeSnapshot.workflowImages || {}) : [])
@@ -570,14 +595,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         onProgress: setGenerationProgress,
       })
       setPreviewUrl(imageUrl)
+      const curLocale = getCurrentLocale()
       const extraCount = (recipeSnapshot.extraImages || []).length
+      const pLoc = recipeSnapshot.portrait ? localizePortrait(recipeSnapshot.portrait, curLocale) : null
+      const cLoc = recipeSnapshot.costume ? localizeCostume(recipeSnapshot.costume, curLocale) : null
+      const poseLoc = recipeSnapshot.pose ? localizePose(recipeSnapshot.pose, curLocale) : null
       const summary = [
-        recipeSnapshot.portrait?.发型名称,
-        recipeSnapshot.costume?.source === 'upload' ? recipeSnapshot.costume.服装名称 : recipeSnapshot.costume?.分类,
-        recipeSnapshot.pose ? `${recipeSnapshot.pose.姿势名称}${recipeSnapshot.pose.角度 ? `(${recipeSnapshot.pose.角度})` : ''}` : null,
-        extraCount ? `+${extraCount}附图` : null,
+        pLoc?.styleName,
+        recipeSnapshot.costume?.source === 'upload' ? cLoc?.name : cLoc?.category,
+        poseLoc ? `${poseLoc.name}${poseLoc.angle ? `(${poseLoc.angle})` : ''}` : null,
+        extraCount ? tr(`+${extraCount}附圖`, `+${extraCount} extra`) : null,
         ...(configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson)
-          ? Object.values(recipeSnapshot.workflowImages || {}).filter((image) => image?.url).map((image) => image.role === 'character_sheet' ? '角色设定集' : image.name)
+          ? Object.values(recipeSnapshot.workflowImages || {}).filter((image) => image?.url).map((image) => image.role === 'character_sheet' ? tr('角色設定集', 'Character Sheet') : image.name)
           : []),
       ]
         .filter(Boolean)
@@ -587,11 +616,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         model: modelUsed,
         prompt: finalPrompt,
         imageUrl,
-        recipeSummary: summary || '自定义合成',
+        recipeSummary: summary || tr('自訂合成', 'Custom Synthesis'),
       })
-      toast.success(`角色图生成完成 (${modelUsed})`)
+      toast.success(tr(`角色圖生成完成 (${modelUsed})`, `Character image generated (${modelUsed})`))
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '调用失败'
+      const msg = e instanceof Error ? e.message : tr('呼叫失敗', 'Request failed')
       setGenerationError(msg)
       toast.error(msg.split('\n')[0])
     } finally {
@@ -649,21 +678,43 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       <AlertDialog open={ageGateOpen} onOpenChange={setAgeGateOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>🔞 年龄确认与免责声明（NSFW 18+）</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('🔞 年齡確認與免責聲明（NSFW 18+）', '🔞 Age Verification & Disclaimer (NSFW 18+)')}
+            </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2 text-left leading-relaxed">
-              <span className="block">
-                关闭「安全模式 (SFW)」后，图库将显示包含成人向艺术参考的敏感分类：
-              </span>
-              <span className="block rounded-lg bg-muted p-2.5 text-xs text-foreground">
-                • <strong>动作姿势库</strong>：全身单人・性感系（399 张）、双人缠绵（275 张）
-                <br />• <strong>服装穿搭库</strong>：内衣・睡衣（199 套）、性感穿搭（140 套）
-              </span>
-              <span className="block text-xs">
-                <strong>免责声明</strong>：
-                <br />1. <strong>年龄限制</strong>：未满 18 周岁的未成年人严禁关闭安全模式或浏览上述敏感分类。
-                <br />2. <strong>来源说明</strong>：图鉴素材源自原作者 ギア（@giaaibusi）公开分享，仅供个人学习交流，严禁商业倒卖。
-                <br />3. <strong>合法使用</strong>：本工具与素材<strong>仅供 AI 绘画学习与合法艺术创作使用，严禁用于任何违法违规、色情传播或侵害他人肖像权（如未经授权的真人换脸）等用途</strong>，使用者须自行承担一切法律责任。
-              </span>
+              {locale === 'en' ? (
+                <>
+                  <span className="block">
+                    Disabling <strong>Safe Mode (SFW)</strong> will display sensitive categories containing adult-oriented artistic references:
+                  </span>
+                  <span className="block rounded-lg bg-muted p-2.5 text-xs text-foreground">
+                    • <strong>Poses Library</strong>: Full Body · Sensual (399), Couple Intimate (275)
+                    <br />• <strong>Costumes Library</strong>: Lingerie &amp; Sleepwear (199), Sensual Outfits (140)
+                  </span>
+                  <span className="block text-xs">
+                    <strong>Disclaimer</strong>:
+                    <br />1. <strong>Age Restriction</strong>: Minors under 18 are strictly prohibited from disabling Safe Mode or browsing these sensitive categories.
+                    <br />2. <strong>Attribution</strong>: Reference assets originate from public shares by ギア (@giaaibusi) and are for personal study only; commercial resale is prohibited.
+                    <br />3. <strong>Lawful Use</strong>: This tool and assets are <strong>strictly for AI art study and lawful artistic creation; any illegal use, non-consensual likeness/face swapping, or unlawful distribution is strictly prohibited</strong>, and users assume full legal responsibility.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block">
+                    關閉「安全模式 (SFW)」後，圖庫將顯示包含成人向藝術參考的敏感分類：
+                  </span>
+                  <span className="block rounded-lg bg-muted p-2.5 text-xs text-foreground">
+                    • <strong>動作姿勢庫</strong>：全身單人・性感系（399 張）、雙人纏綿（275 張）
+                    <br />• <strong>服裝穿搭庫</strong>：內衣・睡衣（199 套）、性感穿搭（140 套）
+                  </span>
+                  <span className="block text-xs">
+                    <strong>免責聲明</strong>：
+                    <br />1. <strong>年齡限制</strong>：未滿 18 週歲的未成年人嚴禁關閉安全模式或瀏覽上述敏感分類。
+                    <br />2. <strong>來源說明</strong>：圖鑑素材源自原作者 ギア（@giaaibusi）公開分享，僅供個人學習交流，嚴禁商業倒賣。
+                    <br />3. <strong>合法使用</strong>：本工具與素材<strong>僅供 AI 繪畫學習與合法藝術創作使用，嚴禁用於任何違法違規、色情傳播或侵害他人肖像權（如未經授權的真人換臉）等用途</strong>，使用者須自行承擔一切法律責任。
+                  </span>
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -672,10 +723,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
                 pendingUnlockCbRef.current = null
               }}
             >
-              保持安全模式
+              {t('保持安全模式', 'Keep Safe Mode')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmUnlockNsfw}>
-              我已年满 18 岁并同意免责声明
+              {t('我已年滿 18 歲並同意免責聲明', 'I am 18+ and agree to the disclaimer')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

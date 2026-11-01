@@ -1,8 +1,9 @@
 import { Link, useMatches } from '@tanstack/react-router'
 import { DicesIcon, ShieldCheckIcon, SparklesIcon } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
+import { LanguageToggle } from '@/components/layout/LanguageToggle'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import {
   Breadcrumb,
@@ -15,15 +16,31 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { useI18n } from '@/i18n'
 import { useStudio } from '@/store/studioStore'
 
 export function AppHeader() {
   const { recipe, randomizeRecipe, safeMode, toggleSafeMode } = useStudio()
+  const { locale, t } = useI18n()
   const qc = useQueryClient()
   const crumbs = useMatches({
     select: (matches) =>
-      matches.filter((m) => m.staticData.title).map((m) => ({ title: m.staticData.title!, path: m.pathname })),
+      matches
+        .filter((m) => m.staticData.title)
+        .map((m) => ({
+          title: locale === 'en' ? m.staticData.titleEn || m.staticData.title! : m.staticData.title!,
+          path: m.pathname,
+        })),
   })
+
+  const pageTitle = crumbs[crumbs.length - 1]?.title
+  useEffect(() => {
+    const base =
+      locale === 'en'
+        ? 'POSE & CHARACTER Atlas｜3-in-1 AI Character Reference Library'
+        : 'POSE & CHARACTER Atlas｜AI 角色三合一參考庫（姿勢 · 服裝 · 人像）'
+    document.title = pageTitle ? `${pageTitle} · ${base}` : base
+  }, [pageTitle, locale])
 
   const selectedCount = [recipe.portrait, recipe.costume, recipe.pose].filter(Boolean).length
 
@@ -68,7 +85,17 @@ export function AppHeader() {
           variant={safeMode ? 'outline' : 'secondary'}
           size="sm"
           onClick={toggleSafeMode}
-          title={safeMode ? '当前已开启安全模式（已隐藏 18+ 敏感内容），点击可解锁完整图库' : '当前已显示 18+ 完整图库，点击可切回安全模式'}
+          title={
+            safeMode
+              ? t(
+                  '目前已開啟安全模式（已隱藏 18+ 敏感內容），點擊可解鎖完整圖庫',
+                  'Safe Mode is ON (18+ content hidden). Click to unlock full gallery'
+                )
+              : t(
+                  '目前已顯示 18+ 完整圖庫，點擊可切回安全模式',
+                  '18+ Full Gallery is unlocked. Click to switch back to Safe Mode'
+                )
+          }
           className={
             safeMode
               ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400'
@@ -76,17 +103,19 @@ export function AppHeader() {
           }
         >
           <ShieldCheckIcon className="size-3.5" />
-          <span className="hidden sm:inline">{safeMode ? '安全模式 (SFW)' : '18+ 完整模式'}</span>
+          <span className="hidden sm:inline">
+            {safeMode ? t('安全模式 (SFW)', 'Safe Mode (SFW)') : t('18+ 完整模式', '18+ Full Mode')}
+          </span>
           <span className="sm:hidden">{safeMode ? 'SFW' : '18+'}</span>
         </Button>
         <Button variant="outline" size="sm" onClick={handleRandom} className="hidden sm:inline-flex">
           <DicesIcon className="size-3.5" />
-          随机捏人
+          {t('隨機捏人', 'Randomize')}
         </Button>
         <Button size="sm" asChild>
           <Link to="/studio">
             <SparklesIcon className="size-3.5" />
-            AI 合成台
+            {t('AI 合成台', 'AI Studio')}
             {selectedCount > 0 && (
               <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 py-0.2 text-[11px] font-bold">
                 {selectedCount}/3
@@ -94,6 +123,7 @@ export function AppHeader() {
             )}
           </Link>
         </Button>
+        <LanguageToggle />
         <ThemeToggle />
       </div>
     </header>

@@ -1,4 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
+import { tr } from '@/i18n'
 import type { CostumeItem, PortraitItem, PoseGroup, PoseItem } from '@/types/gallery'
 
 export const ANGLES = ['正面', '俯视', '仰视', '侧面', '斜侧'] as const
@@ -79,7 +80,7 @@ export const posesQuery = queryOptions({
   staleTime: Infinity,
   queryFn: async () => {
     const res = await fetch('/data/pose-zh.json')
-    if (!res.ok) throw new Error(`加载姿势数据失败: HTTP ${res.status}`)
+    if (!res.ok) throw new Error(tr(`載入姿勢資料失敗: HTTP ${res.status}`, `Failed to load poses data: HTTP ${res.status}`))
     const data = (await res.json()) as PoseItem[]
     return buildPoseGroups(data)
   },
@@ -90,7 +91,7 @@ export const costumesQuery = queryOptions({
   staleTime: Infinity,
   queryFn: async () => {
     const res = await fetch('/data/costume-zh.json')
-    if (!res.ok) throw new Error(`加载服装数据失败: HTTP ${res.status}`)
+    if (!res.ok) throw new Error(tr(`載入服裝資料失敗: HTTP ${res.status}`, `Failed to load costumes data: HTTP ${res.status}`))
     return (await res.json()) as CostumeItem[]
   },
 })
@@ -100,7 +101,7 @@ export const portraitsQuery = queryOptions({
   staleTime: Infinity,
   queryFn: async () => {
     const res = await fetch('/data/portrait-zh.json')
-    if (!res.ok) throw new Error(`加载人像数据失败: HTTP ${res.status}`)
+    if (!res.ok) throw new Error(tr(`載入人像資料失敗: HTTP ${res.status}`, `Failed to load portraits data: HTTP ${res.status}`))
     return (await res.json()) as PortraitItem[]
   },
 })

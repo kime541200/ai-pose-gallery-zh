@@ -624,3 +624,30 @@ PORTRAIT_STYLE = {
     "韓国風タッセルボブ（サイドバング）": "韩式流苏一刀切波波头（八字侧刘海）",
 }
 
+from i18n_en_tw import (  # noqa: E402, F401
+    ANGLE_EN,
+    ANGLE_ZH_TW,
+    CATEGORY_EN,
+    CATEGORY_ZH_TW,
+    COSTUME_CATEGORY_EN,
+    COSTUME_CATEGORY_ZH_TW,
+    COSTUME_COLORS_ZH_TW,
+    COSTUME_MODIFIERS_ZH_TW,
+    COSTUME_NOUNS_ZH_TW,
+    COSTUME_WORD_ALL_ZH_TW,
+    COSTUME_WORD_EN,
+    PORTRAIT_HAIR_EN,
+    PORTRAIT_HAIR_ZH_TW,
+    PORTRAIT_SECTION_EN,
+    PORTRAIT_SECTION_ZH_TW,
+    PORTRAIT_STYLE_EN,
+    PORTRAIT_STYLE_ZH_TW,
+    POSE_EN,
+    POSE_ZH_TW,
+    SYSTEM_EN,
+    SYSTEM_ZH_TW,
+    translate_costume_keywords_en,
+    translate_costume_keywords_zh_tw,
+)
+
+

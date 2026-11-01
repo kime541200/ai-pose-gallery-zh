@@ -1,3 +1,4 @@
+import { tr } from '@/i18n'
 import type { WorkflowParameterOverrides, WorkflowScalar } from '@/types/gallery'
 
 export interface ParameterNode {
@@ -118,7 +119,17 @@ export function getWorkflowImages(json: string, mappedNodeIds: string[], schemas
     if (mappedNodeIds.includes(nodeId) || typeof node.inputs.image !== 'string') return false
     const definition = schemas?.[node.class_type]?.input?.required?.image ?? schemas?.[node.class_type]?.input?.optional?.image
     return /^LoadImage(?:Goohai)?$/.test(node.class_type) || (schemas?.[node.class_type]?.output?.includes('IMAGE') && Array.isArray(definition) && Boolean((definition[1] as Record<string, unknown> | undefined)?.image_upload))
-  }).map(([nodeId, node]) => ({ nodeId, role: node._meta?.studio?.imageRole === 'character_sheet' ? 'character_sheet' as const : undefined, label: node._meta?.studio?.imageRole === 'character_sheet' ? '角色设定集' : typeof node._meta?.title === 'string' ? node._meta.title : `参考图 · ${nodeId}`, optional: node.class_type === 'LoadImageGoohai' })).sort((a, b) => Number(b.role === 'character_sheet') - Number(a.role === 'character_sheet'))
+  }).map(([nodeId, node]) => ({
+    nodeId,
+    role: node._meta?.studio?.imageRole === 'character_sheet' ? 'character_sheet' as const : undefined,
+    label:
+      node._meta?.studio?.imageRole === 'character_sheet'
+        ? tr('角色設定集', 'Character Sheet')
+        : typeof node._meta?.title === 'string'
+          ? node._meta.title
+          : tr(`參考圖 · ${nodeId}`, `Reference Image · ${nodeId}`),
+    optional: node.class_type === 'LoadImageGoohai',
+  })).sort((a, b) => Number(b.role === 'character_sheet') - Number(a.role === 'character_sheet'))
 }
 
 export function validateReferenceCombinations(json: string, uploadedNodeIds: string[]): string | null {
@@ -127,8 +138,18 @@ export function validateReferenceCombinations(json: string, uploadedNodeIds: str
   const selected = JSON.stringify([...new Set(uploadedNodeIds)].sort())
   for (const combinations of declarations) {
     if (combinations.some((combination) => JSON.stringify([...new Set(combination)].sort()) === selected)) continue
-    const label = (id: string) => workflow[id]?._meta?.studio?.imageRole === 'character_sheet' ? '角色设定集' : workflow[id]?._meta?.title || ('参考图 #' + id)
-    return '当前参考图组合不受此工作流支持，可用组合：' + combinations.map((combination) => combination.map(label).join('＋')).join('、') + '。'
+    const label = (id: string) =>
+      workflow[id]?._meta?.studio?.imageRole === 'character_sheet'
+        ? tr('角色設定集', 'Character Sheet')
+        : workflow[id]?._meta?.title || tr(`參考圖 #${id}`, `Reference #${id}`)
+    return tr(
+      '目前參考圖組合不受此工作流支援，可用組合：' +
+        combinations.map((combination) => combination.map(label).join('＋')).join('、') +
+        '。',
+      'Current reference image combination is not supported by this workflow. Valid combinations: ' +
+        combinations.map((combination) => combination.map(label).join(' + ')).join(', ') +
+        '.'
+    )
   }
   return null
 }

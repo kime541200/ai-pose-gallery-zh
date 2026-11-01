@@ -1,4 +1,6 @@
 import type { ApiConfig, ExtraReferenceImage, ImageProviderId, RecipeState } from '@/types/gallery'
+import { getCurrentLocale, type Locale, tr } from '@/i18n'
+import { localizeCostume, localizePortrait, localizePose } from '@/i18n/galleryData'
 import { applyWorkflowOverrides, getWorkflowImages, validateReferenceCombinations, workflowIdentity, type ComfyObjectInfo } from '@/lib/comfyWorkflowParameters'
 import flux3KleinWorkflow from '@/workflows/flux3-klein-edit.api.json'
 import qwen2509DepthWorkflow from '@/workflows/qwen-image-edit-2509.api.json'
@@ -7,6 +9,7 @@ import qwen2509ThreeImageWorkflow from '@/workflows/qwen_image_edit_2509_3img.ap
 export interface ProviderModelOption {
   value: string
   label: string
+  labelEn?: string
 }
 
 export const PROVIDER_META: Record<
@@ -14,6 +17,7 @@ export const PROVIDER_META: Record<
   {
     id: ImageProviderId
     name: string
+    nameEn: string
     shortName: string
     defaultBaseUrl: string
     docUrl: string
@@ -23,6 +27,7 @@ export const PROVIDER_META: Record<
   gemini: {
     id: 'gemini',
     name: 'Google Gemini',
+    nameEn: 'Google Gemini',
     shortName: 'Gemini',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     docUrl: 'https://ai.google.dev/gemini-api/docs/image-generation',
@@ -31,12 +36,13 @@ export const PROVIDER_META: Record<
       { value: 'gemini-3-pro-image-preview', label: 'gemini-3-pro-image-preview' },
       { value: 'gemini-2.5-flash-image', label: 'gemini-2.5-flash-image' },
       { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview' },
-      { value: 'custom', label: '自定义模型 ID' },
+      { value: 'custom', label: '自訂模型 ID', labelEn: 'Custom Model ID' },
     ],
   },
   gpt: {
     id: 'gpt',
     name: 'OpenAI GPT Image',
+    nameEn: 'OpenAI GPT Image',
     shortName: 'GPT',
     defaultBaseUrl: 'https://api.openai.com/v1',
     docUrl: 'https://platform.openai.com/docs/guides/image-generation',
@@ -47,12 +53,13 @@ export const PROVIDER_META: Record<
       { value: 'gpt-image-2', label: 'gpt-image-2' },
       { value: 'gpt-image-1.5', label: 'gpt-image-1.5' },
       { value: 'gpt-image-1', label: 'gpt-image-1' },
-      { value: 'custom', label: '自定义模型 ID' },
+      { value: 'custom', label: '自訂模型 ID', labelEn: 'Custom Model ID' },
     ],
   },
   qwen: {
     id: 'qwen',
-    name: '阿里云百炼 Qwen',
+    name: '阿里雲百煉 Qwen',
+    nameEn: 'Alibaba DashScope Qwen',
     shortName: 'Qwen',
     defaultBaseUrl: 'https://dashscope.aliyuncs.com',
     docUrl: 'https://help.aliyun.com/zh/model-studio/qwen-image-edit-api',
@@ -62,12 +69,13 @@ export const PROVIDER_META: Record<
       { value: 'qwen-image-2.1-turbo', label: 'qwen-image-2.1-turbo' },
       { value: 'qwen-image-2.0-pro', label: 'qwen-image-2.0-pro' },
       { value: 'qwen-image-edit-plus', label: 'qwen-image-edit-plus' },
-      { value: 'custom', label: '自定义模型 ID' },
+      { value: 'custom', label: '自訂模型 ID', labelEn: 'Custom Model ID' },
     ],
   },
   doubao: {
     id: 'doubao',
-    name: '字节火山方舟 Doubao',
+    name: '字節火山方舟 Doubao',
+    nameEn: 'ByteDance Seedream (Doubao)',
     shortName: 'Doubao',
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com',
     docUrl: 'https://www.volcengine.com/docs/82379/1541523',
@@ -77,160 +85,342 @@ export const PROVIDER_META: Record<
       { value: 'doubao-seedream-4-5-251128', label: 'doubao-seedream-4-5-251128' },
       { value: 'doubao-seedream-4-0-250828', label: 'doubao-seedream-4-0-250828' },
       { value: 'doubao-seededit-3-0-i2i-250628', label: 'doubao-seededit-3-0-i2i-250628' },
-      { value: 'custom', label: '自定义模型 ID / Endpoint' },
+      { value: 'custom', label: '自訂模型 ID / Endpoint', labelEn: 'Custom Model ID / Endpoint' },
     ],
   },
   comfyui: {
     id: 'comfyui',
     name: '本地 ComfyUI',
+    nameEn: 'Local ComfyUI',
     shortName: 'ComfyUI',
     // 本地开发与 Docker 容器均走 /comfy 同源代理；线上静态站点直连本机 ComfyUI
     defaultBaseUrl: defaultComfyBaseUrl(),
     docUrl: 'https://docs.comfy.org/essentials/comfyui_server',
     models: [
-      { value: 'flux3-image-klein', label: 'FLUX 3 Image Klein Distilled（默认推荐）' },
-      { value: 'qwen_image_edit_2509', label: 'Qwen-Image-Edit-2509（由工作流决定）' },
-      { value: 'custom', label: '自定义名称（仅用于记录显示）' },
+      {
+        value: 'flux3-image-klein',
+        label: 'FLUX 3 Image Klein Distilled（預設推薦）',
+        labelEn: 'FLUX 3 Image Klein Distilled (Recommended)',
+      },
+      {
+        value: 'qwen_image_edit_2509',
+        label: 'Qwen-Image-Edit-2509（由工作流決定）',
+        labelEn: 'Qwen-Image-Edit-2509 (Defined by workflow)',
+      },
+      {
+        value: 'custom',
+        label: '自訂名稱（僅用於記錄顯示）',
+        labelEn: 'Custom Name (Display only)',
+      },
     ],
   },
 }
 
-export const STYLE_PRESETS: Record<string, { label: string; prompt: string }> = {
+export function getProviderMeta(id: ImageProviderId, locale: Locale = getCurrentLocale()) {
+  const raw = PROVIDER_META[id]
+  return {
+    ...raw,
+    name: locale === 'en' ? raw.nameEn : raw.name,
+    models: raw.models.map((m) => ({
+      ...m,
+      label: locale === 'en' ? m.labelEn || m.label : m.label,
+    })),
+  }
+}
+
+export const STYLE_PRESETS: Record<
+  string,
+  { label: string; labelEn: string; prompt: string; promptEn: string }
+> = {
   none: {
-    label: '无预设（跟随参考图）',
+    label: '無預設（跟隨參考圖）',
+    labelEn: 'None (Follow Reference Images)',
     prompt: '',
+    promptEn: '',
   },
   realistic: {
-    label: '写实人像写真',
-    prompt: '写实商业摄影级质感，85mm 人像镜头，自然柔和光影，真实肌肤纹理与织物细节，8k 高清画质。',
+    label: '寫實人像寫真',
+    labelEn: 'Photorealistic Portrait',
+    prompt: '寫實商業攝影級質感，85mm 人像鏡頭，自然柔和光影，真實肌膚紋理與織物細節，8k 高清畫質。',
+    promptEn:
+      'Commercial studio photography quality, 85mm portrait lens, soft natural lighting, realistic skin texture and fabric details, 8K ultra-detailed.',
   },
   fashion: {
-    label: '日韩杂志画报',
-    prompt: '日韩时尚穿搭杂志画报风格，干净极简摄影棚背景，高级色调，突出人物颜值与服装剪裁。',
+    label: '日韓雜誌畫報',
+    labelEn: 'Fashion Editorial Lookbook',
+    prompt: '日韓時尚穿搭雜誌畫報風格，乾淨極簡攝影棚背景，高級色調，突出人物顏值與服裝剪裁。',
+    promptEn:
+      'East Asian fashion magazine lookbook editorial, clean minimalist studio backdrop, refined color grading highlighting facial features and tailoring.',
   },
   film: {
-    label: '复古胶片写真',
-    prompt: '35mm 富士胶片摄影质感，轻微胶片颗粒，柔和复古暖调，自然街拍光影与电影呼吸感。',
+    label: '復古膠片寫真',
+    labelEn: 'Vintage 35mm Film Photo',
+    prompt: '35mm 富士膠片攝影質感，輕微膠片顆粒，柔和復古暖調，自然街拍光影與電影呼吸感。',
+    promptEn:
+      '35mm Fujifilm analog photography aesthetic, subtle film grain, warm vintage tones, natural candid lighting and cinematic atmosphere.',
   },
   semi_real: {
-    label: '2.5D 游戏原画立绘',
-    prompt: '2.5D 半写实高精度游戏角色原画，唯美厚涂光影，精致五官与华丽布料金属质感。',
+    label: '2.5D 遊戲原畫立繪',
+    labelEn: '2.5D Semi-Realistic Game Art',
+    prompt: '2.5D 半寫實高精度遊戲角色原畫，唯美厚塗光影，精緻五官與華麗布料金屬質感。',
+    promptEn:
+      '2.5D semi-realistic high-detail game character splash art, painterly lighting, refined facial features, and rich fabric and metallic textures.',
   },
   anime: {
-    label: '日系二次元插画',
-    prompt: '日系精致二次元插画风格，细腻赛璐璐与厚涂光影过渡，动漫角色立绘质感，色彩通透干净。',
+    label: '日系二次元插畫',
+    labelEn: 'Japanese Anime Illustration',
+    prompt: '日系精緻二次元插畫風格，細膩賽璐璐與厚塗光影過渡，動漫角色立繪質感，色彩通透乾淨。',
+    promptEn:
+      'Refined Japanese anime illustration style, smooth cel-shaded and soft-painted lighting transitions, clean vibrant colors.',
   },
   cel_anime: {
-    label: '新海诚感动画电影',
-    prompt: '动画电影级画面质感，清澈高饱和光影，细腻体积光与发丝高光，干净唯美的动漫色彩。',
+    label: '新海誠感動畫電影',
+    labelEn: 'Cinematic Anime Film (Shinkai Style)',
+    prompt: '動畫電影級畫面質感，清澈高飽和光影，細膩體積光與髮絲高光，乾淨唯美的動漫色彩。',
+    promptEn:
+      'Theatrical anime film quality, crisp high-saturation lighting, delicate volumetric rays and hair highlights, vivid atmospheric colors.',
   },
   manga: {
-    label: '日式黑白漫画网点',
-    prompt: '日本黑白漫画原稿风格，利落精准的G笔线稿，细腻漫画网点纸阴影与层次对比。',
+    label: '日式黑白漫畫網點',
+    labelEn: 'Monochrome Manga & Screentone',
+    prompt: '日本黑白漫畫原稿風格，俐落精準的G筆線稿，細膩漫畫網點紙陰影與層次對比。',
+    promptEn:
+      'Japanese monochrome manga manuscript style, crisp G-pen ink lineart, detailed screentone shading and dramatic contrast.',
   },
   render3d: {
     label: '3D 次世代角色渲染',
-    prompt: 'Unreal Engine 5 / Octane Render 次世代 3D 角色渲染，细腻次表面散射肌肤材质，电影级布光。',
+    labelEn: 'Next-Gen 3D Character Render (UE5)',
+    prompt: 'Unreal Engine 5 / Octane Render 次世代 3D 角色渲染，細膩次表面散射肌膚材質，電影級布光。',
+    promptEn:
+      'Unreal Engine 5 / Octane Render next-gen 3D character render, realistic subsurface scattering skin shader, cinematic studio lighting.',
   },
   chibi_box: {
-    label: '3D 潮玩手办质感',
-    prompt: '高品质 PVC 涂装完成品手办质感，柔和摄影棚柔光箱布光，精致材质高光与微距景深。',
+    label: '3D 潮玩公仔質感',
+    labelEn: 'PVC Collector Figure Style',
+    prompt: '高品質 PVC 塗裝完成品公仔質感，柔和攝影棚柔光箱布光，精緻材質高光與微距景深。',
+    promptEn:
+      'High-end painted PVC scale figure aesthetic, softbox studio lighting, crisp material specular highlights, macro depth of field.',
   },
   cyberpunk: {
-    label: '赛博朋克霓虹',
-    prompt: '赛博朋克科幻视觉风格，雨夜霓虹冷暖双色轮廓光，未来感材质反光与电影级氛围。',
+    label: '賽博龐克霓虹',
+    labelEn: 'Cyberpunk Neon Sci-Fi',
+    prompt: '賽博龐克科幻視覺風格，雨夜霓虹冷暖雙色輪廓光，未來感材質反光與電影級氛圍。',
+    promptEn:
+      'Cyberpunk sci-fi visual aesthetic, rainy neon warm/cool rim lighting, futuristic reflective materials and cinematic mood.',
   },
   concept_sheet: {
-    label: '角色设定集立绘（纯白底）',
-    prompt: '标准角色设定集全身立绘，纯白干净无杂物背景，均匀漫反射布光，清晰展示全身服装结构与配饰细节。',
+    label: '角色設定集立繪（純白底）',
+    labelEn: 'Character Concept Sheet (Pure White BG)',
+    prompt: '標準角色設定集全身立繪，純白乾淨無雜物背景，均勻漫反射布光，清晰展示全身服裝結構與配飾細節。',
+    promptEn:
+      'Full-body character concept art standing portrait on a pure clean white background, even diffused lighting clearly showcasing outfit structure and accessories.',
   },
 }
 
 // 按实际传入模型的图片顺序动态生成「图1 / 图2 / 图3...」明确指代，支持附加上传图片
-// 用自然语言逐项描述（人物 / 服装 / 姿势），实测比堆砌要点更能让多图编辑模型还原服装、避免照搬人体模型线条
 const PHOTO_STYLES = new Set(['realistic', 'fashion', 'film'])
 
-export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic', workflowImages: ExtraReferenceImage[] = []): string {
+export function buildRecipePrompt(
+  recipe: RecipeState,
+  stylePreset = 'realistic',
+  workflowImages: ExtraReferenceImage[] = [],
+  locale: Locale = getCurrentLocale()
+): string {
   const styleInfo = STYLE_PRESETS[stylePreset] ?? STYLE_PRESETS.realistic
   const isPhoto = PHOTO_STYLES.has(stylePreset)
-  const faceless = !recipe.portrait && !workflowImages.some((image) => image.role === 'character_sheet') && Boolean(recipe.costume && recipe.pose)
+  const faceless =
+    !recipe.portrait &&
+    !workflowImages.some((image) => image.role === 'character_sheet') &&
+    Boolean(recipe.costume && recipe.pose)
   const clauses: string[] = []
   let idx = 1
   let costumeIdx = 0
 
-  workflowImages.filter((image) => image.role === 'character_sheet').forEach(() => {
-    clauses.push('• 角色设定参考：提供的设定集展示同一角色的多个视角与细节，不是多个不同人物。保持角色的脸型、五官、发型、发色、肤色及服装配饰一致；只把它作为角色参考，成品布局遵循当前工作流的输出设置。')
-    idx++
-  })
+  if (locale === 'en') {
+    workflowImages
+      .filter((image) => image.role === 'character_sheet')
+      .forEach(() => {
+        clauses.push(
+          '• Character Sheet Reference: The provided character sheet shows multiple angles and details of the SAME character, not multiple people. Keep facial structure, features, hairstyle, hair color, skin tone, and outfit accessories consistent; use it strictly as character reference while following the current workflow output layout.'
+        )
+        idx++
+      })
+
+    if (recipe.portrait) {
+      const pLoc = localizePortrait(recipe.portrait, 'en')
+      const hairDesc =
+        recipe.portrait.发型名称 && recipe.portrait.发型名称 !== '标准基础款' ? pLoc.title : pLoc.hair
+      const skin =
+        'Skin tone must match the person in Image 1 across all exposed skin (including cutouts), rendered naturally in the target style.'
+      const outfit = recipe.costume
+        ? ''
+        : ' Keep the visible clothing and accessories from Image 1; do not copy the mannequin or outfit from the pose reference.'
+      clauses.push(
+        recipe.portrait.source === 'upload'
+          ? `• Character: Use the person in Image ${idx}, preserving facial structure, features, hairstyle, and hair color. ${skin}${outfit}`
+          : `• Character: Use the person in Image ${idx}, preserving facial structure, features, hairstyle (${hairDesc}), and hair color. ${skin}${outfit}`
+      )
+      idx++
+    }
+    if (recipe.costume) {
+      costumeIdx = idx
+      const cLoc = localizeCostume(recipe.costume, 'en')
+      clauses.push(
+        recipe.costume.source === 'upload'
+          ? `• Outfit: Dress the character in the complete outfit and accessories shown in Image ${idx}, matching the exact colors, cut, fabrics, and details of Image ${idx}.`
+          : `• Outfit: Dress the character in the complete outfit and accessories shown in Image ${idx} (reference: ${cLoc.name}), matching the exact colors, cut, fabrics, and details of Image ${idx}.`
+      )
+      idx++
+    }
+    if (recipe.pose) {
+      const poseLoc = localizePose(recipe.pose, 'en')
+      const wear = costumeIdx ? `, wearing the outfit from Image ${costumeIdx}` : ''
+      const body = isPhoto
+        ? `the final subject is a real human with natural skin texture${wear}`
+        : `render the subject's skin tone and materials in the target style${wear}`
+      clauses.push(
+        recipe.pose.source === 'upload'
+          ? `• Pose: Follow the body posture, limb placement, and camera angle in Image ${idx}; reference only the pose and composition without copying the appearance or clothing of Image ${idx}, ensuring ${body}.`
+          : `• Pose: Strictly follow the body posture, limb placement, and camera perspective in Image ${idx} "${poseLoc.name}" (${poseLoc.angle}); reference only the 3D posture and spatial perspective while ignoring depth-map or white mannequin textures, ensuring ${body}.`
+      )
+      idx++
+    }
+    if (faceless) {
+      clauses.push(
+        '• Faceless Mannequin Display: Generate an adult display figure wearing the reference outfit with a smooth, featureless natural skin-toned face (no eyes, nose, mouth, or specific identity); keep all exposed skin tones consistent instead of copying grey/white mannequin plastic.'
+      )
+    }
+    for (const reference of workflowImages.filter((image) => image.role !== 'character_sheet')) {
+      clauses.push(
+        `• Workflow Reference: Incorporate relevant elements from Image ${idx} (${reference.name || 'extra reference'}) as required by the workflow.`
+      )
+      idx++
+    }
+    for (const extra of recipe.extraImages || []) {
+      clauses.push(
+        `• Extra Reference: Blend elements, accessories, background, or lighting details from Image ${idx} (${extra.name || 'extra element'}).`
+      )
+      idx++
+    }
+
+    if (clauses.length === 0) {
+      return 'Please select a Portrait / Costume / Pose or upload a reference image first.'
+    }
+
+    const lines = [
+      `Based on the ${
+        workflowImages.some((image) => image.role === 'character_sheet')
+          ? 'provided character sheet reference'
+          : `${idx - 1} reference image(s) provided`
+      }, generate a complete ${
+        faceless ? 'outfit showcase image' : isPhoto ? 'photorealistic portrait photo' : 'character illustration'
+      }:`,
+      ...clauses,
+    ]
+    if (styleInfo.promptEn) {
+      lines.push(
+        `• Style: ${styleInfo.promptEn} ${
+          faceless
+            ? 'Balanced body proportions, natural hands, featureless face, unified lighting.'
+            : 'Balanced body proportions, natural hands and facial features, unified lighting.'
+        }`
+      )
+    }
+    lines.push('No text, logos, or watermarks in the image.')
+    return lines.join('\n')
+  }
+
+  workflowImages
+    .filter((image) => image.role === 'character_sheet')
+    .forEach(() => {
+      clauses.push(
+        '• 角色設定參考：提供的設定集展示同一角色的多個視角與細節，不是多個不同人物。保持角色的臉型、五官、髮型、髮色、膚色及服裝配飾一致；只把它作為角色參考，成品佈局遵循當前工作流的輸出設定。'
+      )
+      idx++
+    })
 
   if (recipe.portrait) {
+    const pLoc = localizePortrait(recipe.portrait, 'zh-TW')
     const hairDesc =
-      recipe.portrait.发型名称 && recipe.portrait.发型名称 !== '标准基础款'
-        ? recipe.portrait.标题
-        : recipe.portrait.发长
-    const skin = '人物的肤色必须与图一人物一致，所有裸露皮肤（包括服装镂空处露出的皮肤）必须与脸部肤色统一，统一后的肤色与质感按风格要求呈现。'
-    const outfit = recipe.costume ? '' : '保留图1人物原有可见服装与配饰，不复制姿势参考图的服装或白模外观。'
+      recipe.portrait.发型名称 && recipe.portrait.发型名称 !== '标准基础款' ? pLoc.title : pLoc.hair
+    const skin =
+      '人物的膚色必須與圖一人物一致，所有裸露皮膚（包括服裝鏤空處露出的皮膚）必須與臉部膚色統一，統一後的膚色與質感按風格要求呈現。'
+    const outfit = recipe.costume ? '' : '保留圖1人物原有可見服裝與配飾，不複製姿勢參考圖的服裝或白模外觀。'
     clauses.push(
       recipe.portrait.source === 'upload'
-        ? `• 人物：图${idx}中的人物，保持其脸型、五官、发型和发色一致。${skin}${outfit}`
-        : `• 人物：图${idx}中的人物，保持其脸型、五官、发型（${hairDesc}）和发色一致。${skin}${outfit}`
+        ? `• 人物：圖${idx}中的人物，保持其臉型、五官、髮型和髮色一致。${skin}${outfit}`
+        : `• 人物：圖${idx}中的人物，保持其臉型、五官、髮型（${hairDesc}）和髮色一致。${skin}${outfit}`
     )
     idx++
   }
   if (recipe.costume) {
     costumeIdx = idx
+    const cLoc = localizeCostume(recipe.costume, 'zh-TW')
     clauses.push(
       recipe.costume.source === 'upload'
-        ? `• 服装：让人物穿上图${idx}中展示的整套服装和配饰，每件单品的颜色、款式、面料与配饰都以图${idx}为准。`
-        : `• 服装：让人物穿上图${idx}中展示的整套服装和配饰（参考名称：${recipe.costume.服装名称}），每件单品的颜色、款式、面料与配饰都以图${idx}为准，名称仅作辅助说明。`
+        ? `• 服裝：讓人物穿上圖${idx}中展示的整套服裝和配飾，每件單品的顏色、款式、面料與配飾都以圖${idx}為準。`
+        : `• 服裝：讓人物穿上圖${idx}中展示的整套服裝和配飾（參考名稱：${cLoc.name}），每件單品的顏色、款式、面料與配飾都以圖${idx}為準，名稱僅作輔助說明。`
     )
     idx++
   }
   if (recipe.pose) {
-    const wear = costumeIdx ? `，穿着图${costumeIdx}的服装` : ''
+    const poseLoc = localizePose(recipe.pose, 'zh-TW')
+    const wear = costumeIdx ? `，穿著圖${costumeIdx}的服裝` : ''
     const body = isPhoto
-      ? `最终画面中的人物是真人，皮肤真实自然${wear}`
-      : `人物的肤色与质感按风格要求呈现${wear}`
+      ? `最終畫面中的人物是真人，皮膚真實自然${wear}`
+      : `人物的膚色與質感按風格要求呈現${wear}`
     clauses.push(
       recipe.pose.source === 'upload'
-        ? `• 姿势：按照图${idx}中的人物动作和镜头角度摆姿势；仅参考姿势与构图，不复制图${idx}人物的外观与服装，${body}。`
-        : `• 姿势：身体姿态、四肢动作与镜头透视严格遵循图${idx}「${recipe.pose.姿势名称}」（${recipe.pose.角度}）；仅参考图${idx}的立体姿态与空间透视，忽略深度图或素体白模材质，${body}。`
+        ? `• 姿勢：按照圖${idx}中的人物動作和鏡頭角度擺姿勢；僅參考姿勢與構圖，不複製圖${idx}人物的外觀與服裝，${body}。`
+        : `• 姿勢：身體姿態、四肢動作與鏡頭透視嚴格遵循圖${idx}「${poseLoc.name}」（${poseLoc.angle}）；僅參考圖${idx}的立體姿態與空間透視，忽略深度圖或素體白模材質，${body}。`
     )
     idx++
   }
   if (faceless) {
-    clauses.push('• 无脸展示：生成一位穿着参考服装的成年展示人物，脸部保持无五官的自然肤色表面，不添加眼睛、鼻子、嘴巴或具体人物身份；全身裸露皮肤的颜色统一，不照搬服装图或姿势图的灰白人台材质。')
+    clauses.push(
+      '• 無臉展示：生成一位穿著參考服裝的成年展示人物，臉部保持無五官的自然膚色表面，不添加眼睛、鼻子、嘴巴或具體人物身份；全身裸露皮膚的顏色統一，不照搬服裝圖或姿勢圖的灰白人台材質。'
+    )
   }
   for (const reference of workflowImages.filter((image) => image.role !== 'character_sheet')) {
-    clauses.push(`• 工作流参考：参考图${idx}（${reference.name || '补充参考'}）中的相关元素，具体用途以工作流要求为准。`)
+    clauses.push(
+      `• 工作流參考：參考圖${idx}（${reference.name || '補充參考'}）中的相關元素，具體用途以工作流要求為準。`
+    )
     idx++
   }
   for (const extra of recipe.extraImages || []) {
     clauses.push(
-      `• 附加参考：融合图${idx}（${extra.name || '补充元素'}）中的元素、配饰、背景或光影细节。`
+      `• 附加參考：融合圖${idx}（${extra.name || '補充元素'}）中的元素、配飾、背景或光影細節。`
     )
     idx++
   }
 
   if (clauses.length === 0) {
-    return '请先选择人像/服装/姿势或上传附加参考图。'
+    return '請先選擇人像/服裝/姿勢或上傳附加參考圖。'
   }
 
   const lines = [
-    `请根据${workflowImages.some((image) => image.role === 'character_sheet') ? '提供的角色设定参考' : `提供的 ${idx - 1} 张参考图`}，生成一张完整的${faceless ? '人物穿搭展示图' : isPhoto ? '真实人物照片' : '人物图像'}：`,
+    `請根據${
+      workflowImages.some((image) => image.role === 'character_sheet')
+        ? '提供的角色設定參考'
+        : `提供的 ${idx - 1} 張參考圖`
+    }，生成一張完整的${faceless ? '人物穿搭展示圖' : isPhoto ? '真實人物照片' : '人物圖像'}：`,
     ...clauses,
   ]
   if (styleInfo.prompt) {
-    lines.push(`• 风格：${styleInfo.prompt} ${faceless ? '人物比例协调，手部自然，脸部无五官，光影统一。' : '人物比例协调，手部与五官自然，光影统一。'}`)
+    lines.push(
+      `• 風格：${styleInfo.prompt} ${
+        faceless ? '人物比例協調，手部自然，臉部無五官，光影統一。' : '人物比例協調，手部與五官自然，光影統一。'
+      }`
+    )
   }
-  lines.push('画面中没有任何文字、标志或水印。')
+  lines.push('畫面中沒有任何文字、標誌或浮水印。')
   return lines.join('\n')
 }
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.onerror = () => reject(new Error(tr('讀取檔案失敗', 'Failed to read file')))
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
@@ -242,7 +432,7 @@ export function fileToDataUrl(file: File): Promise<string> {
         c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
         resolve(c.toDataURL('image/png'))
       }
-      img.onerror = () => reject(new Error('解析图片失败'))
+      img.onerror = () => reject(new Error(tr('解析圖片失敗', 'Failed to decode image')))
       img.src = reader.result as string
     }
     reader.readAsDataURL(file)
@@ -254,7 +444,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error(`加载图片失败: ${src}`))
+    img.onerror = () => reject(new Error(tr(`載入圖片失敗: ${src}`, `Failed to load image: ${src}`)))
     if (src.startsWith('data:') || /^https?:\/\//i.test(src) || src.startsWith('/')) {
       img.src = src
     } else {
@@ -263,41 +453,47 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-export async function stitchRecipeCanvas(recipe: RecipeState): Promise<string> {
+export async function stitchRecipeCanvas(
+  recipe: RecipeState,
+  locale: Locale = getCurrentLocale()
+): Promise<string> {
   const list: Array<{ tag: string; sub: string; src: string }> = []
   let idx = 1
 
   if (recipe.portrait) {
+    const pLoc = localizePortrait(recipe.portrait, locale)
     list.push({
-      tag: `图${idx++} · 人像`,
-      sub: recipe.portrait.标题,
+      tag: locale === 'en' ? `Img ${idx++} · Portrait` : `圖${idx++} · 人像`,
+      sub: pLoc.title,
       src: recipe.portrait.原图 || recipe.portrait.缩略图,
     })
   }
   if (recipe.costume) {
+    const cLoc = localizeCostume(recipe.costume, locale)
     list.push({
-      tag: `图${idx++} · 服装`,
-      sub: `${recipe.costume.分类} · ${recipe.costume.服装名称}`,
+      tag: locale === 'en' ? `Img ${idx++} · Costume` : `圖${idx++} · 服裝`,
+      sub: `${cLoc.category} · ${cLoc.name}`,
       src: recipe.costume.预览图 || recipe.costume.原图 || recipe.costume.缩略图,
     })
   }
   if (recipe.pose) {
+    const poseLoc = localizePose(recipe.pose, locale)
     list.push({
-      tag: `图${idx++} · 姿势`,
-      sub: `${recipe.pose.姿势名称}（${recipe.pose.角度}）`,
+      tag: locale === 'en' ? `Img ${idx++} · Pose` : `圖${idx++} · 姿勢`,
+      sub: `${poseLoc.name}${poseLoc.angle ? ` (${poseLoc.angle})` : ''}`,
       src: recipe.pose.原图 || recipe.pose.缩略图,
     })
   }
   for (const extra of recipe.extraImages || []) {
     list.push({
-      tag: `图${idx++} · 附加`,
-      sub: extra.name || '自定义参考图',
+      tag: locale === 'en' ? `Img ${idx++} · Extra` : `圖${idx++} · 附加`,
+      sub: extra.name || (locale === 'en' ? 'Custom Reference' : '自訂參考圖'),
       src: extra.url,
     })
   }
 
   if (!list.length) {
-    throw new Error('请至少选择或上传 1 张参考图')
+    throw new Error(tr('請至少選擇或上傳 1 張參考圖', 'Please select or upload at least 1 reference image'))
   }
 
   const imgs = await Promise.all(list.map((x) => loadImage(x.src)))
@@ -621,35 +817,41 @@ export const DEFAULT_COMFY_PRESET: ComfyPresetId = 'flux3_klein'
 
 export const COMFYUI_WORKFLOW_TEMPLATES: Record<
   ComfyPresetId,
-  { label: string; workflow: ComfyWorkflow; defaults: ComfyNodeMappings }
+  { label: string; labelEn: string; workflow: ComfyWorkflow; defaults: ComfyNodeMappings }
 > = {
   flux3_klein: {
-    label: 'FLUX 3 Image Klein Distilled 三图合成（3D 深度姿态）· 默认推荐',
+    label: 'FLUX 3 Image Klein Distilled 三圖合成（3D 深度姿態）· 預設推薦',
+    labelEn: 'FLUX 3 Image Klein Distilled · 3-Image Synthesis (3D Depth Pose) · Recommended',
     workflow: flux3KleinWorkflow as ComfyWorkflow,
     defaults: { promptNodeId: '20', portraitNodeId: '10', costumeNodeId: '11', poseNodeId: '12', stitchedNodeId: 'none' },
   },
   qwen2509_depth: {
-    label: 'Qwen-Image-Edit-2509 三图合成（GGUF + 3D 深度姿态）',
+    label: 'Qwen-Image-Edit-2509 三圖合成（GGUF + 3D 深度姿態）',
+    labelEn: 'Qwen-Image-Edit-2509 · 3-Image Synthesis (GGUF + 3D Depth Pose)',
     workflow: qwen2509DepthWorkflow as ComfyWorkflow,
     defaults: { promptNodeId: '20', portraitNodeId: '10', costumeNodeId: '11', poseNodeId: '12', stitchedNodeId: 'none' },
   },
   qwen2509_3img: {
-    label: 'Qwen Image Edit 2509 三图合成（FP8 原生直传）',
+    label: 'Qwen Image Edit 2509 三圖合成（FP8 原生直傳）',
+    labelEn: 'Qwen Image Edit 2509 · 3-Image Synthesis (FP8 Native)',
     workflow: qwen2509ThreeImageWorkflow as ComfyWorkflow,
     defaults: { promptNodeId: '12', portraitNodeId: '1', costumeNodeId: '2', poseNodeId: '3', stitchedNodeId: 'none' },
   },
   qwen2509_2img: {
-    label: 'Qwen Image Edit 2509 双图姿态迁移（人物+姿势）',
+    label: 'Qwen Image Edit 2509 雙圖姿態遷移（人物+姿勢）',
+    labelEn: 'Qwen Image Edit 2509 · 2-Image Pose Transfer (Person + Pose)',
     workflow: buildQwen2509TwoImage(),
     defaults: { promptNodeId: '12', portraitNodeId: '1', costumeNodeId: 'none', poseNodeId: '3', stitchedNodeId: 'none' },
   },
   qwen21_3img: {
-    label: 'Qwen-Image 2.1 三图合成（需另装 2.1 模型）',
+    label: 'Qwen-Image 2.1 三圖合成（需另裝 2.1 模型）',
+    labelEn: 'Qwen-Image 2.1 · 3-Image Synthesis (Requires 2.1 Models)',
     workflow: buildQwen21Workflow(true),
     defaults: { promptNodeId: '9', portraitNodeId: '1', costumeNodeId: '2', poseNodeId: '3', stitchedNodeId: 'none' },
   },
   qwen21_2img: {
-    label: 'Qwen-Image 2.1 双图姿态迁移（需另装 2.1 模型）',
+    label: 'Qwen-Image 2.1 雙圖姿態遷移（需另裝 2.1 模型）',
+    labelEn: 'Qwen-Image 2.1 · 2-Image Pose Transfer (Requires 2.1 Models)',
     workflow: buildQwen21Workflow(false),
     defaults: { promptNodeId: '9', portraitNodeId: '1', costumeNodeId: 'none', poseNodeId: '2', stitchedNodeId: 'none' },
   },
@@ -665,18 +867,33 @@ export interface ComfyParsedNodes {
 
 export function parseComfyWorkflowNodes(workflowJson: string): ComfyParsedNodes {
   if (!workflowJson.trim()) {
-    return { valid: false, isUiFormat: false, error: '工作流 JSON 为空', imageNodes: [], promptNodes: [] }
+    return {
+      valid: false,
+      isUiFormat: false,
+      error: tr('工作流 JSON 為空', 'Workflow JSON is empty'),
+      imageNodes: [],
+      promptNodes: [],
+    }
   }
   try {
     const parsed = JSON.parse(workflowJson)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { valid: false, isUiFormat: false, error: '无效的 JSON 对象', imageNodes: [], promptNodes: [] }
+      return {
+        valid: false,
+        isUiFormat: false,
+        error: tr('無效的 JSON 物件', 'Invalid JSON object'),
+        imageNodes: [],
+        promptNodes: [],
+      }
     }
     if (Array.isArray(parsed.nodes) && Array.isArray(parsed.links)) {
       return {
         valid: false,
         isUiFormat: true,
-        error: '检测到普通画布格式 JSON，请在 ComfyUI 中使用「工作流 → 导出 (API)」得到 API 格式 JSON',
+        error: tr(
+          '檢測到普通畫布格式 JSON，請在 ComfyUI 中使用「工作流 → 匯出 (API)」取得 API 格式 JSON',
+          'Detected UI canvas JSON format. Please use "Workflow → Export (API)" in ComfyUI to export API format JSON.'
+        ),
         imageNodes: [],
         promptNodes: [],
       }
@@ -718,14 +935,23 @@ export function parseComfyWorkflowNodes(workflowJson: string): ComfyParsedNodes 
     }
 
     if (imageNodes.length === 0 && promptNodes.length === 0) {
-      return { valid: false, isUiFormat: false, error: '未在 JSON 中找到任何 ComfyUI 节点', imageNodes, promptNodes }
+      return {
+        valid: false,
+        isUiFormat: false,
+        error: tr('未在 JSON 中找到任何 ComfyUI 節點', 'No ComfyUI nodes found in JSON'),
+        imageNodes,
+        promptNodes,
+      }
     }
     return { valid: true, isUiFormat: false, imageNodes, promptNodes }
   } catch (err: any) {
     return {
       valid: false,
       isUiFormat: false,
-      error: `JSON 解析失败: ${err?.message || '语法错误'}`,
+      error: tr(
+        `JSON 解析失敗: ${err?.message || '語法錯誤'}`,
+        `Failed to parse JSON: ${err?.message || 'Syntax error'}`
+      ),
       imageNodes: [],
       promptNodes: [],
     }
@@ -780,23 +1006,48 @@ function normalizeComfyBase(baseUrl: string): string {
 
 function describeComfyNetworkError(baseUrl: string, timedOut: boolean): string {
   if (timedOut) {
-    return `[ComfyUI] 请求 ${baseUrl} 超时：ComfyUI 可能正忙或无响应，请查看 ComfyUI 终端日志。`
+    return tr(
+      `[ComfyUI] 請求 ${baseUrl} 逾時：ComfyUI 可能正忙或無回應，請查看 ComfyUI 終端機日誌。`,
+      `[ComfyUI] Request to ${baseUrl} timed out: ComfyUI may be busy or unresponsive, please check ComfyUI terminal logs.`
+    )
   }
   if (baseUrl.startsWith('/')) {
-    return `[ComfyUI] 本地代理 ${baseUrl} 无法连通 ComfyUI：请确认 ComfyUI 已启动，且端口与启动网页时的 COMFYUI_URL 一致（默认 http://127.0.0.1:8000）。`
+    return tr(
+      `[ComfyUI] 本機代理 ${baseUrl} 無法連通 ComfyUI：請確認 ComfyUI 已啟動，且連接埠與啟動網頁時的 COMFYUI_URL 一致（預設 http://127.0.0.1:8000）。`,
+      `[ComfyUI] Local proxy ${baseUrl} could not reach ComfyUI: please verify ComfyUI is running and matches COMFYUI_URL (default http://127.0.0.1:8000).`
+    )
   }
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const reasons = [
-    `① ComfyUI 未启动，或地址/端口不对（Desktop 版默认 8000，便携版默认 8188）`,
-    `② 跨域 (CORS) 被拦截：ComfyUI 启动参数需包含 --enable-cors-header "${origin}"（该参数只能填一个来源）`,
+    tr(
+      `① ComfyUI 未啟動，或位址/連接埠不對（Desktop 版預設 8000，便攜版預設 8188）`,
+      `① ComfyUI is not running, or the URL/port is wrong (Desktop default 8000, Portable default 8188)`
+    ),
+    tr(
+      `② 跨域 (CORS) 被攔截：ComfyUI 啟動參數需包含 --enable-cors-header "${origin}"（該參數只能填一個來源）`,
+      `② Blocked by CORS: ComfyUI startup flags must include --enable-cors-header "${origin}" (only one origin allowed)`
+    ),
   ]
   if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    reasons.push('③ 浏览器「本地网络访问」权限被拒绝：请点击地址栏左侧图标允许访问本地设备')
+    reasons.push(
+      tr(
+        '③ 瀏覽器「本地網路存取」權限被拒絕：請點擊網址列左側圖示允許存取本機裝置',
+        '③ Browser "Local Network Access" permission denied: click the icon next to the address bar to allow local device access'
+      )
+    )
     if (/^http:/i.test(baseUrl) && !/\/\/(127\.0\.0\.1|localhost|\[::1\])/i.test(baseUrl)) {
-      reasons.push('④ HTTPS 页面不能访问局域网 HTTP 地址（混合内容限制），请改用 127.0.0.1 或本地运行本站')
+      reasons.push(
+        tr(
+          '④ HTTPS 頁面不能存取區域網路 HTTP 位址（混合內容限制），請改用 127.0.0.1 或本機執行本站',
+          '④ HTTPS pages cannot access LAN HTTP addresses (mixed content restriction); use 127.0.0.1 or run this site locally'
+        )
+      )
     }
   }
-  return `[ComfyUI] 无法连接 ${baseUrl}。可能原因：\n${reasons.join('\n')}`
+  return tr(
+    `[ComfyUI] 無法連線 ${baseUrl}。可能原因：\n${reasons.join('\n')}`,
+    `[ComfyUI] Cannot connect to ${baseUrl}. Possible causes:\n${reasons.join('\n')}`
+  )
 }
 
 async function comfyFetch(
@@ -842,15 +1093,36 @@ export async function testComfyConnection(baseUrl: string, apiKey = ''): Promise
   const cleanUrl = normalizeComfyBase(baseUrl)
   const res = await comfyFetch(cleanUrl, '/system_stats', {}, apiKey, 8000)
   if (res.status === 401 || res.status === 403) {
-    throw new Error(`[ComfyUI] ${cleanUrl} 拒绝访问 (HTTP ${res.status})，请检查 API Key / 鉴权设置`)
+    throw new Error(
+      tr(
+        `[ComfyUI] ${cleanUrl} 拒絕存取 (HTTP ${res.status})，請檢查 API Key / 驗證設定`,
+        `[ComfyUI] ${cleanUrl} access denied (HTTP ${res.status}), please check API Key / auth settings`
+      )
+    )
   }
-  if (!res.ok) throw new Error(`[ComfyUI] ${cleanUrl}/system_stats 返回 HTTP ${res.status}，该地址可能不是 ComfyUI`)
+  if (!res.ok)
+    throw new Error(
+      tr(
+        `[ComfyUI] ${cleanUrl}/system_stats 回傳 HTTP ${res.status}，該位址可能不是 ComfyUI`,
+        `[ComfyUI] ${cleanUrl}/system_stats returned HTTP ${res.status}; this URL may not be ComfyUI`
+      )
+    )
   const data = await readJsonSafe(res)
-  if (!data?.system) throw new Error(`[ComfyUI] ${cleanUrl} 的响应不是 ComfyUI 格式，请检查地址`)
-  const ver = data.system.comfyui_version || '未知版本'
+  if (!data?.system)
+    throw new Error(
+      tr(
+        `[ComfyUI] ${cleanUrl} 的回應不是 ComfyUI 格式，請檢查位址`,
+        `[ComfyUI] Response from ${cleanUrl} is not in ComfyUI format, please check the URL`
+      )
+    )
+  const ver = data.system.comfyui_version || tr('未知版本', 'Unknown version')
   const dev = data.devices?.[0]
-  const gpu = dev?.name ? String(dev.name).replace(/^cuda:\d+\s*/, '').replace(/\s*:\s*\w+$/, '') : '本地设备'
-  const vram = dev?.vram_total ? ` · 显存 ${(dev.vram_total / 1024 ** 3).toFixed(1)} GB` : ''
+  const gpu = dev?.name
+    ? String(dev.name).replace(/^cuda:\d+\s*/, '').replace(/\s*:\s*\w+$/, '')
+    : tr('本機裝置', 'Local device')
+  const vram = dev?.vram_total
+    ? tr(` · 顯存 ${(dev.vram_total / 1024 ** 3).toFixed(1)} GB`, ` · VRAM ${(dev.vram_total / 1024 ** 3).toFixed(1)} GB`)
+    : ''
   return `ComfyUI ${ver} · ${gpu}${vram}`
 }
 
@@ -894,13 +1166,19 @@ const baseName = (s: string) => s.split(/[\\/]/).pop()!.toLowerCase()
 
 export async function fetchComfyObjectInfo(baseUrl: string, apiKey: string, workflowJson: string): Promise<ComfyObjectInfo> {
   const parsed = parseComfyWorkflowNodes(workflowJson)
-  if (!parsed.valid) throw new Error(parsed.error || '工作流 JSON 无效')
+  if (!parsed.valid) throw new Error(parsed.error || tr('工作流 JSON 無效', 'Invalid workflow JSON'))
   const workflow: ComfyWorkflow = JSON.parse(workflowJson)
   const base = normalizeComfyBase(baseUrl)
   const classes = Array.from(new Set(Object.values(workflow).map((node) => node.class_type).filter(Boolean)))
   const entries = await Promise.all(classes.map(async (cls) => {
     const res = await comfyFetch(base, `/object_info/${encodeURIComponent(cls)}`, {}, apiKey, 15000)
-    if (!res.ok) throw new Error(`[ComfyUI] 无法读取节点「${cls}」的定义（HTTP ${res.status}），请检查连接地址、访问令牌和网关接口权限。`)
+    if (!res.ok)
+      throw new Error(
+        tr(
+          `[ComfyUI] 無法讀取節點「${cls}」的定義（HTTP ${res.status}），請檢查連線位址、存取權杖和閘道介面權限。`,
+          `[ComfyUI] Failed to read definition for node "${cls}" (HTTP ${res.status}); please check connection URL, access token, and gateway permissions.`
+        )
+      )
     const json = await readJsonSafe(res)
     return [cls, json?.[cls]] as const
   }))
@@ -916,7 +1194,7 @@ export async function checkComfyWorkflow(
 ): Promise<ComfyCheckResult> {
   const parsedInfo = parseComfyWorkflowNodes(workflowJson)
   if (!parsedInfo.valid) {
-    return { ok: false, errors: [parsedInfo.error || '工作流 JSON 无效'], warnings: [], fixes: [] }
+    return { ok: false, errors: [parsedInfo.error || tr('工作流 JSON 無效', 'Invalid workflow JSON')], warnings: [], fixes: [] }
   }
   const wf: ComfyWorkflow = JSON.parse(workflowJson)
   const info = objectInfo ?? await fetchComfyObjectInfo(baseUrl, apiKey, workflowJson)
@@ -933,7 +1211,10 @@ export async function checkComfyWorkflow(
     const def = info[node.class_type]
     if (!def) {
       errors.push(
-        `缺少节点「${node.class_type}」（节点 ${id}：${title}）。请在 ComfyUI Manager 安装对应的自定义节点，或升级 ComfyUI。`
+        tr(
+          `缺少節點「${node.class_type}」（節點 ${id}：${title}）。請在 ComfyUI Manager 安裝對應的自訂節點，或升級 ComfyUI。`,
+          `Missing node "${node.class_type}" (Node ${id}: ${title}). Please install the custom node via ComfyUI Manager or upgrade ComfyUI.`
+        )
       )
       continue
     }
@@ -949,13 +1230,21 @@ export async function checkComfyWorkflow(
           for (let i = 0; i < (template.min ?? 0); i++) {
             const child = template.names?.[i] ?? `${template.prefix}${i}`
             if (!(`${name}.${child}` in inputs)) {
-              errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}.${child}`)
+              errors.push(
+                tr(
+                  `節點 ${id}「${title}」缺少必填輸入 ${name}.${child}`,
+                  `Node ${id} "${title}" is missing required input ${name}.${child}`
+                )
+              )
             }
           }
         }
         continue
       }
-      if (!(name in inputs)) errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}`)
+      if (!(name in inputs))
+        errors.push(
+          tr(`節點 ${id}「${title}」缺少必填輸入 ${name}`, `Node ${id} "${title}" is missing required input ${name}`)
+        )
     }
 
     for (const [name, value] of Object.entries(inputs)) {
@@ -966,7 +1255,12 @@ export async function checkComfyWorkflow(
       if (name === 'image' && mapped.has(id) && imageLoaders.has(id)) continue
       if (node.class_type === 'LoadImage' && name === 'image') {
         if (!mapped.has(id) && !options.includes(value)) {
-          warnings.push(`节点 ${id}「${title}」引用的图片 ${value} 不在 ComfyUI input 目录中，且未映射到人像/服装/姿势槽位`)
+          warnings.push(
+            tr(
+              `節點 ${id}「${title}」引用的圖片 ${value} 不在 ComfyUI input 目錄中，且未映射到人像/服裝/姿勢槽位`,
+              `Image "${value}" referenced by Node ${id} "${title}" is not in ComfyUI input directory and not mapped to portrait/costume/pose slots`
+            )
+          )
         }
         continue
       }
@@ -974,12 +1268,20 @@ export async function checkComfyWorkflow(
       const sameFile = options.find((o) => baseName(o) === baseName(value))
       if (sameFile) {
         inputs[name] = sameFile
-        fixes.push(`节点 ${id}「${title}」${name}：${value} → ${sameFile}（自动修正路径）`)
+        fixes.push(
+          tr(
+            `節點 ${id}「${title}」${name}：${value} → ${sameFile}（自動修正路徑）`,
+            `Node ${id} "${title}" ${name}: ${value} → ${sameFile} (auto-corrected path)`
+          )
+        )
         continue
       }
-      const sample = options.slice(0, 12).join('、')
+      const sample = options.slice(0, 12).join(tr('、', ', '))
       errors.push(
-        `节点 ${id}「${title}」的 ${name} = ${value} 在本机不存在（通常是模型文件未安装或路径不同）。本机可选：${sample || '（空）'}${options.length > 12 ? ' …' : ''}`
+        tr(
+          `節點 ${id}「${title}」的 ${name} = ${value} 在本機不存在（通常是模型檔案未安裝或路徑不同）。本機可選：${sample || '（空）'}${options.length > 12 ? ' …' : ''}`,
+          `Node ${id} "${title}" has ${name} = ${value} which does not exist locally (model file not installed or different path). Available locally: ${sample || '(empty)'}${options.length > 12 ? ' …' : ''}`
+        )
       )
     }
   }
@@ -997,20 +1299,26 @@ function translateNodeError(er: any): string {
   const detail = er?.details ? `（${er.details}）` : ''
   switch (er?.type) {
     case 'value_not_in_list':
-      return `${er.extra_info?.input_name ?? '输入'} 的值不在本机可选列表中${detail}——通常是模型文件不存在或路径不同`
+      return tr(
+        `${er.extra_info?.input_name ?? '輸入'} 的值不在本機可選列表中${detail}——通常是模型檔案不存在或路徑不同`,
+        `Value of ${er.extra_info?.input_name ?? 'input'} is not in local available list${detail} — usually model file missing or path differs`
+      )
     case 'required_input_missing':
-      return `缺少必填输入 ${er.extra_info?.input_name ?? ''}`
+      return tr(
+        `缺少必填輸入 ${er.extra_info?.input_name ?? ''}`,
+        `Missing required input ${er.extra_info?.input_name ?? ''}`
+      )
     case 'invalid_input_type':
     case 'return_type_mismatch':
-      return `节点连线类型不匹配${detail}`
+      return tr(`節點連線類型不匹配${detail}`, `Node connection type mismatch${detail}`)
     case 'value_bigger_than_max':
     case 'value_smaller_than_min':
-      return `参数超出范围${detail}`
+      return tr(`參數超出範圍${detail}`, `Parameter out of range${detail}`)
     case 'image_not_found':
     case 'custom_validation_failed':
-      return `${er.message || '校验失败'}${detail}`
+      return `${er.message || tr('校驗失敗', 'Validation failed')}${detail}`
     default:
-      return `${er?.message || '校验失败'}${detail}`
+      return `${er?.message || tr('校驗失敗', 'Validation failed')}${detail}`
   }
 }
 
@@ -1019,9 +1327,16 @@ function formatComfyPromptError(json: any, wf: ComfyWorkflow, status: number): s
   const e = json?.error
   if (e) {
     if (e.type === 'missing_node_type' || /does not exist|not found/i.test(String(e.message))) {
-      parts.push(`缺少节点类型：${e.details || e.message}。请在 ComfyUI Manager 安装缺失的自定义节点或升级 ComfyUI`)
+      parts.push(
+        tr(
+          `缺少節點類型：${e.details || e.message}。請在 ComfyUI Manager 安裝缺失的自訂節點或升級 ComfyUI`,
+          `Missing node type: ${e.details || e.message}. Please install the missing custom node via ComfyUI Manager or upgrade ComfyUI`
+        )
+      )
     } else if (e.type === 'prompt_no_outputs') {
-      parts.push('工作流没有输出节点（SaveImage / PreviewImage）')
+      parts.push(
+        tr('工作流沒有輸出節點（SaveImage / PreviewImage）', 'Workflow has no output node (SaveImage / PreviewImage)')
+      )
     } else if (e.type !== 'prompt_outputs_failed_validation') {
       parts.push(`${e.message || e.type}${e.details ? `：${e.details}` : ''}`)
     }
@@ -1029,11 +1344,11 @@ function formatComfyPromptError(json: any, wf: ComfyWorkflow, status: number): s
   for (const [id, ne] of Object.entries<any>(json?.node_errors || {})) {
     const title = wf[id]?._meta?.title || ne?.class_type || id
     for (const er of ne?.errors || []) {
-      parts.push(`节点 ${id}「${title}」：${translateNodeError(er)}`)
+      parts.push(tr(`節點 ${id}「${title}」：${translateNodeError(er)}`, `Node ${id} "${title}": ${translateNodeError(er)}`))
     }
   }
   if (!parts.length) parts.push(json?._raw || `HTTP ${status}`)
-  return `[ComfyUI] 提交工作流失败：\n${parts.join('\n')}`
+  return tr(`[ComfyUI] 提交工作流失敗：\n${parts.join('\n')}`, `[ComfyUI] Failed to submit workflow:\n${parts.join('\n')}`)
 }
 
 async function freeComfyMemory(baseUrl: string, apiKey: string): Promise<void> {
@@ -1062,26 +1377,44 @@ function formatExecutionError(messages: any[], wf: ComfyWorkflow): { text: strin
     if (/out of memory|OutOfMemory|CUDA error: out of memory|allocat/i.test(raw)) {
       return {
         oom: true,
-        text:
-          `[ComfyUI] 显存不足（节点 ${errMsg.node_id}「${title}」）。已请求 ComfyUI 释放显存。\n` +
-          '建议：关闭其他占用显卡的程序；在工作流中把「按姿势图比例确定输出尺寸」节点的 megapixels 从 1.0 调低到 0.6；然后重试。',
+        text: tr(
+          `[ComfyUI] 顯存不足（節點 ${errMsg.node_id}「${title}」）。已請求 ComfyUI 釋放顯存。\n` +
+            '建議：關閉其他佔用顯示卡的程式；在工作流中把「按姿勢圖比例確定輸出尺寸」節點的 megapixels 從 1.0 調低到 0.6；然後重試。',
+          `[ComfyUI] Out of VRAM (Node ${errMsg.node_id} "${title}"). Requested ComfyUI to free VRAM.\n` +
+            'Tip: Close other GPU-heavy apps, or lower megapixels from 1.0 to 0.6 in the output size node, then retry.'
+        ),
       }
     }
     return {
       oom: false,
-      text: `[ComfyUI] 执行出错（节点 ${errMsg.node_id}「${title}」）：${String(errMsg.exception_message || raw).trim().slice(0, 400)}`,
+      text: tr(
+        `[ComfyUI] 執行出錯（節點 ${errMsg.node_id}「${title}」）：${String(errMsg.exception_message || raw).trim().slice(0, 400)}`,
+        `[ComfyUI] Execution error (Node ${errMsg.node_id} "${title}"): ${String(errMsg.exception_message || raw).trim().slice(0, 400)}`
+      ),
     }
   }
   if ((messages || []).some((m) => m?.[0] === 'execution_interrupted')) {
-    return { oom: false, text: '[ComfyUI] 任务已被中断（可能在 ComfyUI 界面中点击了取消）' }
+    return {
+      oom: false,
+      text: tr(
+        '[ComfyUI] 任務已被中斷（可能在 ComfyUI 介面中點擊了取消）',
+        '[ComfyUI] Task was interrupted (possibly cancelled in ComfyUI UI)'
+      ),
+    }
   }
-  return { oom: false, text: `[ComfyUI] 工作流执行出错：${JSON.stringify(messages || '').slice(0, 300)}` }
+  return {
+    oom: false,
+    text: tr(
+      `[ComfyUI] 工作流執行出錯：${JSON.stringify(messages || '').slice(0, 300)}`,
+      `[ComfyUI] Workflow execution error: ${JSON.stringify(messages || '').slice(0, 300)}`
+    ),
+  }
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('读取生成结果失败'))
+    reader.onerror = () => reject(new Error(tr('讀取生成結果失敗', 'Failed to read generated image')))
     reader.onload = () => resolve(reader.result as string)
     reader.readAsDataURL(blob)
   })
@@ -1097,7 +1430,7 @@ async function uploadImageToComfy(
   try {
     dataUrl = await srcToPngDataUrl(src)
   } catch {
-    throw new Error(`读取参考图失败：${src.slice(0, 80)}`)
+    throw new Error(tr(`讀取參考圖失敗：${src.slice(0, 80)}`, `Failed to read reference image: ${src.slice(0, 80)}`))
   }
   const form = new FormData()
   form.append('image', dataUrlToBlob(dataUrl), `${filenamePrefix}_${Date.now()}.png`)
@@ -1106,7 +1439,12 @@ async function uploadImageToComfy(
 
   const res = await comfyFetch(baseUrl, '/upload/image', { method: 'POST', body: form }, apiKey, 60000)
   if (!res.ok) {
-    throw new Error(`[ComfyUI] 上传参考图失败 (HTTP ${res.status})：${(await res.text()).slice(0, 200)}`)
+    throw new Error(
+      tr(
+        `[ComfyUI] 上傳參考圖失敗 (HTTP ${res.status})：${(await res.text()).slice(0, 200)}`,
+        `[ComfyUI] Failed to upload reference image (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`
+      )
+    )
   }
   const json = await res.json()
   return json.subfolder ? `${json.subfolder}/${json.name}` : json.name
@@ -1209,11 +1547,11 @@ async function generateWithComfyUi(params: {
   const timeoutSec = Math.max(60, cp.timeoutSec || 600)
   const parsedInfo = parseComfyWorkflowNodes(cp.workflowJson)
   if (!parsedInfo.valid) {
-    throw new Error(`[ComfyUI] ${parsedInfo.error || '工作流 JSON 无效'}`)
+    throw new Error(`[ComfyUI] ${parsedInfo.error || tr('工作流 JSON 無效', 'Invalid workflow JSON')}`)
   }
 
   // 0. 预检：服务在线 + 节点/模型与本机匹配
-  report({ stage: 'check', message: '正在检查 ComfyUI 服务与模型…' })
+  report({ stage: 'check', message: tr('正在檢查 ComfyUI 服務與模型…', 'Checking ComfyUI service and models…') })
   await testComfyConnection(baseUrl, apiKey)
   const schemas = await fetchComfyObjectInfo(baseUrl, apiKey, cp.workflowJson)
   const extraImageNodes = getWorkflowImages(cp.workflowJson, [cp.portraitNodeId, cp.costumeNodeId, cp.poseNodeId, cp.stitchedNodeId], schemas)
@@ -1227,7 +1565,12 @@ async function generateWithComfyUi(params: {
     ...extraImageNodes.filter((node) => extraImages[node.nodeId]?.url || (node.optional && node.role === 'character_sheet')).map((node) => node.nodeId),
   ], schemas)
   if (!check.ok) {
-    throw new Error(`[ComfyUI] 工作流与本机不匹配：\n${check.errors.join('\n')}`)
+    throw new Error(
+      tr(
+        `[ComfyUI] 工作流與本機不匹配：\n${check.errors.join('\n')}`,
+        `[ComfyUI] Workflow does not match local environment:\n${check.errors.join('\n')}`
+      )
+    )
   }
   const workflow: ComfyWorkflow = JSON.parse(check.fixedJson ?? selectedJson)
 
@@ -1237,19 +1580,19 @@ async function generateWithComfyUi(params: {
       nodeId: cp.portraitNodeId,
       src: recipe.portrait ? recipe.portrait.原图 || recipe.portrait.缩略图 : null,
       prefix: 'studio_portrait',
-      label: '人像',
+      label: tr('人像', 'Portrait'),
     },
     {
       nodeId: cp.costumeNodeId,
       src: recipe.costume ? recipe.costume.预览图 || recipe.costume.原图 || recipe.costume.缩略图 : null,
       prefix: 'studio_costume',
-      label: '服装',
+      label: tr('服裝', 'Costume'),
     },
     {
       nodeId: cp.poseNodeId,
       src: recipe.pose ? recipe.pose.原图 || recipe.pose.缩略图 : null,
       prefix: 'studio_pose',
-      label: '姿势',
+      label: tr('姿勢', 'Pose'),
     },
   ]
   const combinationError = validateReferenceCombinations(cp.workflowJson, [
@@ -1260,11 +1603,21 @@ async function generateWithComfyUi(params: {
 
   const invalidSlots = slotUploads.filter((slot) => slot.nodeId && slot.nodeId !== 'none' && !parsedInfo.imageNodes.some((node) => node.id === slot.nodeId))
   if (invalidSlots.length) {
-    throw new Error(`[ComfyUI] ${invalidSlots.map((slot) => slot.label).join('、')}节点映射已失效，请重新识别或选择节点`)
+    throw new Error(
+      tr(
+        `[ComfyUI] ${invalidSlots.map((slot) => slot.label).join('、')}節點映射已失效，請重新識別或選擇節點`,
+        `[ComfyUI] Node mapping for ${invalidSlots.map((slot) => slot.label).join(', ')} is invalid; please re-detect or select nodes`
+      )
+    )
   }
   const missingSlots = slotUploads.filter((slot) => slot.nodeId && slot.nodeId !== 'none' && !slot.src && parsedInfo.imageNodes.find((node) => node.id === slot.nodeId)?.emptyValue === undefined)
   if (missingSlots.length) {
-    throw new Error(`[ComfyUI] 请先选择或上传：${missingSlots.map((slot) => slot.label).join('、')}`)
+    throw new Error(
+      tr(
+        `[ComfyUI] 請先選擇或上傳：${missingSlots.map((slot) => slot.label).join('、')}`,
+        `[ComfyUI] Please select or upload first: ${missingSlots.map((slot) => slot.label).join(', ')}`
+      )
+    )
   }
 
   for (const slot of slotUploads) {
@@ -1279,9 +1632,17 @@ async function generateWithComfyUi(params: {
         workflow[slot.nodeId].inputs.image = emptyValue
         continue
       }
-      throw new Error(`当前工作流需要「${slot.label}」参考图（节点 ${slot.nodeId}），请先在图库中选择`)
+      throw new Error(
+        tr(
+          `目前工作流需要「${slot.label}」參考圖（節點 ${slot.nodeId}），請先在圖庫中選擇`,
+          `Current workflow requires a "${slot.label}" reference image (Node ${slot.nodeId}), please select one in the gallery first`
+        )
+      )
     }
-    report({ stage: 'upload', message: `正在上传${slot.label}参考图…` })
+    report({
+      stage: 'upload',
+      message: tr(`正在上傳${slot.label}參考圖…`, `Uploading ${slot.label} reference image…`),
+    })
     workflow[slot.nodeId].inputs.image = await uploadImageToComfy(baseUrl, slot.src, slot.prefix, apiKey)
   }
 
@@ -1297,12 +1658,12 @@ async function generateWithComfyUi(params: {
       if (node.optional && node.role === 'character_sheet') workflow[node.nodeId].inputs.image = '无'
       continue
     }
-    report({ stage: 'upload', message: `正在上传${node.label}…` })
+    report({ stage: 'upload', message: tr(`正在上傳${node.label}…`, `Uploading ${node.label}…`) })
     workflow[node.nodeId].inputs.image = await uploadImageToComfy(baseUrl, image.url, 'studio_reference', apiKey)
   }
 
   if (cp.stitchedNodeId && cp.stitchedNodeId !== 'none' && workflow[cp.stitchedNodeId]?.inputs) {
-    report({ stage: 'upload', message: '正在上传参考拼图…' })
+    report({ stage: 'upload', message: tr('正在上傳參考拼圖…', 'Uploading stitched reference sheet…') })
     const stitchedDataUrl = await stitchRecipeCanvas(recipe)
     workflow[cp.stitchedNodeId].inputs.image = await uploadImageToComfy(baseUrl, stitchedDataUrl, 'studio_stitched', apiKey)
   }
@@ -1337,15 +1698,19 @@ async function generateWithComfyUi(params: {
     if (!d || (promptId && d.prompt_id && d.prompt_id !== promptId)) return
     if (msg.type === 'executing' && d.node) {
       lastNodeTitle = workflow[d.node]?._meta?.title || workflow[d.node]?.class_type || d.node
-      report({ stage: 'running', message: `正在执行：${lastNodeTitle}` })
+      report({ stage: 'running', message: tr(`正在執行：${lastNodeTitle}`, `Executing: ${lastNodeTitle}`) })
     } else if (msg.type === 'progress' && d.max) {
       const percent = Math.round((d.value / d.max) * 100)
-      report({ stage: 'running', message: `${lastNodeTitle || '采样中'}（${d.value}/${d.max}）`, percent })
+      report({
+        stage: 'running',
+        message: `${lastNodeTitle || tr('取樣中', 'Sampling')} (${d.value}/${d.max})`,
+        percent,
+      })
     }
   })
 
   try {
-    report({ stage: 'queue', message: '正在提交工作流…' })
+    report({ stage: 'queue', message: tr('正在提交工作流…', 'Submitting workflow…') })
     const promptRes = await comfyFetch(
       baseUrl,
       '/prompt',
@@ -1362,7 +1727,7 @@ async function generateWithComfyUi(params: {
       throw new Error(formatComfyPromptError(promptJson, workflow, promptRes.status))
     }
     promptId = promptJson.prompt_id
-    report({ stage: 'queue', message: '已提交，等待 ComfyUI 执行…' })
+    report({ stage: 'queue', message: tr('已提交，等待 ComfyUI 執行…', 'Submitted, waiting for ComfyUI…') })
 
     // 5. 轮询 /history/{prompt_id} 获取最终结果
     const startedAt = Date.now()
@@ -1371,14 +1736,21 @@ async function generateWithComfyUi(params: {
       if (Date.now() - startedAt > timeoutSec * 1000) {
         await cancelComfyPrompt(baseUrl, apiKey, promptId)
         throw new Error(
-          `[ComfyUI] 等待生成结果超时（超过 ${Math.round(timeoutSec / 60)} 分钟），已取消该任务。首次加载模型较慢，可在合成台调大超时时间后重试。`
+          tr(
+            `[ComfyUI] 等待生成結果逾時（超過 ${Math.round(timeoutSec / 60)} 分鐘），已取消該任務。首次載入模型較慢，可在合成台調大逾時時間後重試。`,
+            `[ComfyUI] Timed out waiting for generation result (over ${Math.round(timeoutSec / 60)} min), task cancelled. First model load can be slow; increase timeout in Studio and retry.`
+          )
         )
       }
       let histRes: Response
       try {
         histRes = await comfyFetch(baseUrl, `/history/${promptId}`, {}, apiKey, 15000)
       } catch (e) {
-        if (attempt % 4 === 3) report({ stage: 'running', message: '暂时无法连接 ComfyUI，正在重试…' })
+        if (attempt % 4 === 3)
+          report({
+            stage: 'running',
+            message: tr('暫時無法連線 ComfyUI，正在重試…', 'Temporarily unable to reach ComfyUI, retrying…'),
+          })
         if (Date.now() - startedAt > 60000 && attempt % 20 === 19) throw e
         continue
       }
@@ -1390,7 +1762,11 @@ async function generateWithComfyUi(params: {
             const q = await (await comfyFetch(baseUrl, '/queue', {}, apiKey, 10000)).json()
             const pendingIdx = (q?.queue_pending || []).findIndex((x: any) => x?.[1] === promptId)
             if (pendingIdx >= 0) {
-              report({ stage: 'queue', message: `排队中，前方还有 ${pendingIdx + (q.queue_running?.length || 0)} 个任务` })
+              const ahead = pendingIdx + (q.queue_running?.length || 0)
+              report({
+                stage: 'queue',
+                message: tr(`排隊中，前方還有 ${ahead} 個任務`, `In queue, ${ahead} task(s) ahead`),
+              })
             }
           } catch {
             /* ignore */
@@ -1413,23 +1789,36 @@ async function generateWithComfyUi(params: {
         }
       }
       if (!outImg) {
-        if (item.status?.completed) throw new Error('[ComfyUI] 工作流已执行完成，但没有输出图片（请检查是否有 SaveImage 节点）')
+        if (item.status?.completed)
+          throw new Error(
+            tr(
+              '[ComfyUI] 工作流已執行完成，但沒有輸出圖片（請檢查是否有 SaveImage 節點）',
+              '[ComfyUI] Workflow finished but produced no output image (please check for a SaveImage node)'
+            )
+          )
         continue
       }
 
-      report({ stage: 'download', message: '正在获取生成结果…', percent: 100 })
+      report({ stage: 'download', message: tr('正在取得生成結果…', 'Fetching generated image…'), percent: 100 })
       const qs = new URLSearchParams({
         filename: outImg.filename,
         subfolder: outImg.subfolder || '',
         type: outImg.type || 'output',
       })
       const viewRes = await comfyFetch(baseUrl, `/view?${qs.toString()}`, {}, apiKey, 60000)
-      if (!viewRes.ok) throw new Error(`[ComfyUI] 获取生成图片失败 (HTTP ${viewRes.status})`)
+      if (!viewRes.ok)
+        throw new Error(
+          tr(`[ComfyUI] 取得生成圖片失敗 (HTTP ${viewRes.status})`, `[ComfyUI] Failed to fetch generated image (HTTP ${viewRes.status})`)
+        )
       const blob = await viewRes.blob()
       if (!blob.size || !blob.type.startsWith('image/')) {
-        throw new Error('[ComfyUI] 返回的生成结果不是有效图片')
+        throw new Error(tr('[ComfyUI] 回傳的生成結果不是有效圖片', '[ComfyUI] Returned result is not a valid image'))
       }
-      return { imageUrl: await blobToDataUrl(blob), modelUsed: 'ComfyUI 工作流', providerUsed: 'comfyui' }
+      return {
+        imageUrl: await blobToDataUrl(blob),
+        modelUsed: tr('ComfyUI 工作流', 'ComfyUI Workflow'),
+        providerUsed: 'comfyui',
+      }
     }
   } finally {
     ws?.close()
@@ -1467,7 +1856,12 @@ export async function generateCharacterImage(params: {
   const apiKey = pCfg.apiKey.trim()
 
   if (provider !== 'comfyui' && !apiKey) {
-    throw new Error(`请先配置 ${PROVIDER_META[provider].name} 的 API Key`)
+    throw new Error(
+      tr(
+        `請先設定 ${getProviderMeta(provider).name} 的 API Key`,
+        `Please configure the API Key for ${getProviderMeta(provider).name} first`
+      )
+    )
   }
 
   const rawSources = [
@@ -1480,12 +1874,12 @@ export async function generateCharacterImage(params: {
   ].filter(Boolean) as string[]
 
   if (!rawSources.length) {
-    throw new Error('请先选择或上传至少 1 张参考图')
+    throw new Error(tr('請先選擇或上傳至少 1 張參考圖', 'Please select or upload at least 1 reference image first'))
   }
 
   const model = pCfg.model === 'custom' ? pCfg.customModel.trim() : pCfg.model
   if (provider !== 'comfyui' && !model) {
-    throw new Error('请选择或填写有效的模型名称')
+    throw new Error(tr('請選擇或填寫有效的模型名稱', 'Please select or enter a valid model name'))
   }
 
   const baseUrl = (pCfg.baseUrl.trim() || PROVIDER_META[provider].defaultBaseUrl).replace(/\/+$/, '')
@@ -1783,8 +2177,8 @@ export async function generateCharacterImage(params: {
       json?.error?.message ||
       json?.message ||
       json?.code ||
-      `请求失败 (HTTP ${res.status})`
-    throw new Error(`[${PROVIDER_META[provider].shortName}] ${errMsg}`)
+      tr(`請求失敗 (HTTP ${res.status})`, `Request failed (HTTP ${res.status})`)
+    throw new Error(`[${getProviderMeta(provider).shortName}] ${errMsg}`)
   }
 
   const imageUrl = extractUniversalImage(json)
@@ -1793,7 +2187,12 @@ export async function generateCharacterImage(params: {
       json?.choices?.[0]?.message?.content ||
       json?.output?.choices?.[0]?.message?.content?.[0]?.text ||
       JSON.stringify(json).slice(0, 260)
-    throw new Error(`接口已响应但未解析到图片输出：${fallbackText}`)
+    throw new Error(
+      tr(
+        `介面已回應但未解析到圖片輸出：${fallbackText}`,
+        `API responded but no image output could be parsed: ${fallbackText}`
+      )
+    )
   }
 
   return { imageUrl, modelUsed: model, providerUsed: provider }

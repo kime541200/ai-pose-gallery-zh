@@ -5,30 +5,33 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useI18n } from '@/i18n'
 import { getWorkflowControls, getWorkflowImages, validControlValue, workflowIdentity, type WorkflowControl } from '@/lib/comfyWorkflowParameters'
 import { fetchComfyObjectInfo, fileToDataUrl } from '@/services/aiGenerator'
 import { useStudio } from '@/store/studioStore'
 import type { WorkflowScalar } from '@/types/gallery'
 
 function ParameterField({ control, value, overridden, onChange, onReset }: { control: WorkflowControl; value: WorkflowScalar; overridden: boolean; onChange: (value: WorkflowScalar) => void; onReset: () => void }) {
+  const { t } = useI18n()
   const [numberDraft, setNumberDraft] = useState(String(value))
   const id = `workflow-${control.key}`
   const inputClass = 'min-h-11 w-full min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm'
   return <div className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <label htmlFor={id} className="min-w-0 flex-1 break-words text-xs font-medium">{control.group && <span className="mb-1 block font-normal text-muted-foreground">{control.group}</span>}{control.label}</label>
-      <Button type="button" size="sm" variant="ghost" className="min-h-11 shrink-0" aria-label={`恢复${control.label}默认值`} disabled={!overridden} onClick={onReset}>恢复默认</Button>
+      <Button type="button" size="sm" variant="ghost" className="min-h-11 shrink-0" aria-label={t(`恢復${control.label}預設值`, `Reset ${control.label} to default`)} disabled={!overridden} onClick={onReset}>{t('恢復預設', 'Reset')}</Button>
     </div>
     {control.type === 'boolean' ? <Switch id={id} checked={Boolean(value)} onCheckedChange={onChange} />
       : control.type === 'enum' ? <select id={id} className={inputClass} value={JSON.stringify(value)} onChange={(event) => onChange(JSON.parse(event.target.value))}>{control.options?.map((option) => <option key={JSON.stringify(option)} value={JSON.stringify(option)}>{control.optionLabels?.[JSON.stringify(option)] || String(option)}</option>)}</select>
-      : control.type === 'number' ? <Input id={id} className="min-h-11" type="number" min={control.min} max={control.max} step={control.step ?? 'any'} value={numberDraft} onChange={(event) => setNumberDraft(event.target.value)} onBlur={() => { const parsed = numberDraft.trim() ? Number(numberDraft) : NaN; if (validControlValue(control, parsed)) onChange(parsed); else { setNumberDraft(String(value)); toast.error('请输入参数允许范围内的数字') } }} />
+      : control.type === 'number' ? <Input id={id} className="min-h-11" type="number" min={control.min} max={control.max} step={control.step ?? 'any'} value={numberDraft} onChange={(event) => setNumberDraft(event.target.value)} onBlur={() => { const parsed = numberDraft.trim() ? Number(numberDraft) : NaN; if (validControlValue(control, parsed)) onChange(parsed); else { setNumberDraft(String(value)); toast.error(t('請輸入參數允許範圍內的數字', 'Please enter a number within the valid range')) } }} />
       : control.multiline ? <Textarea id={id} value={String(value)} rows={3} onChange={(event) => onChange(event.target.value)} />
       : <Input id={id} className="min-h-11" value={String(value)} onChange={(event) => onChange(event.target.value)} />}
-    <p className="break-words text-xs text-muted-foreground">{control.description || (overridden ? '已覆盖工作流默认值' : '沿用工作流默认值')}{overridden && <span className="mt-1 block font-medium text-primary">已修改</span>}</p>
+    <p className="break-words text-xs text-muted-foreground">{control.description || (overridden ? t('已覆蓋工作流預設值', 'Overriding workflow default') : t('沿用工作流預設值', 'Using workflow default'))}{overridden && <span className="mt-1 block font-medium text-primary">{t('已修改', 'Modified')}</span>}</p>
   </div>
 }
 
 export function WorkflowParameters({ onPreview, onUploadingChange }: { onPreview: (url: string) => void; onUploadingChange: (id: string | null) => void }) {
+  const { t } = useI18n()
   const { apiConfig, recipe, updateComfyUiParams, setWorkflowImage } = useStudio()
   const cp = apiConfig.comfyuiParams
   const endpoint = apiConfig.providers.comfyui
@@ -62,7 +65,7 @@ export function WorkflowParameters({ onPreview, onUploadingChange }: { onPreview
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    if (!file.type.startsWith('image/')) { toast.error('请选择图片文件'); return }
+    if (!file.type.startsWith('image/')) { toast.error(t('請選擇圖片檔案', 'Please select an image file')); return }
     const startedIdentity = identity
     setUploading(nodeId)
     onUploadingChange(`workflow-${nodeId}`)
@@ -70,27 +73,27 @@ export function WorkflowParameters({ onPreview, onUploadingChange }: { onPreview
       const url = await fileToDataUrl(file)
       if (currentIdentityRef.current !== startedIdentity) return
       setWorkflowImage(nodeId, { id: crypto.randomUUID(), name: file.name, url, role }, startedIdentity)
-    } catch (error) { toast.error(error instanceof Error ? error.message : '图片读取失败，已保留原图') }
+    } catch (error) { toast.error(error instanceof Error ? error.message : t('圖片讀取失敗，已保留原圖', 'Failed to read image, kept original')) }
     finally { setUploading(null); onUploadingChange(null) }
   }
   return <div className="col-span-full min-w-0 space-y-4 break-words rounded-xl border p-3">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium">工作流高级参数</h3><Button type="button" size="sm" variant="ghost" className="min-h-11" disabled={!Object.keys(saved).length} onClick={() => updateComfyUiParams({ parameterOverrides: { workflowId: identity, values: {} } })}>全部恢复默认</Button></div>
-    <p className="text-xs text-muted-foreground">按当前 ComfyUI 节点定义显示；未修改的参数沿用导入 API。</p>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-medium">{t('工作流進階參數', 'Workflow Advanced Parameters')}</h3><Button type="button" size="sm" variant="ghost" className="min-h-11" disabled={!Object.keys(saved).length} onClick={() => updateComfyUiParams({ parameterOverrides: { workflowId: identity, values: {} } })}>{t('全部恢復預設', 'Reset All')}</Button></div>
+    <p className="text-xs text-muted-foreground">{t('依目前 ComfyUI 節點定義顯示；未修改的參數沿用匯入 API。', 'Displayed according to current ComfyUI node definitions; unmodified parameters use imported API defaults.')}</p>
     {images.length > 0 && <div className="grid gap-4 sm:grid-cols-2">{images.map((image) => {
       const selected = workflowImages[image.nodeId]
       const inputId = `workflow-image-${image.nodeId}`
       return <div key={image.nodeId} className="min-w-0 space-y-2 rounded-xl bg-background p-3" onDrop={(event) => { event.preventDefault(); event.stopPropagation() }}>
-        <label htmlFor={inputId} className="block text-sm font-medium">{image.label}{image.optional ? '（可选）' : '（可替换）'}</label>
-        {selected && <button type="button" className="block w-full cursor-zoom-in" onClick={() => onPreview(selected.url)} aria-label={`预览${image.label}`}><img src={selected.url} alt={image.label} className="h-28 w-full rounded-lg object-contain" /></button>}
-        <Input id={inputId} className="min-h-11 max-w-full py-2" type="file" accept="image/*" disabled={uploading !== null} onChange={(event) => void upload(event, image.nodeId, image.role)} aria-label={`上传${image.label}`} />
-        {uploading === image.nodeId && <p role="status" className="text-xs">正在读取图片…</p>}
-        {selected ? <Button type="button" variant="ghost" size="sm" className="min-h-11" aria-label={`清除${image.label}`} onClick={() => setWorkflowImage(image.nodeId, null, identity)}>清除图片</Button> : <p className="text-xs text-muted-foreground">{image.role === 'character_sheet' ? '可上传完整角色设定集，人物身份与外观以此图为准。' : image.optional ? '可上传此节点所需的参考图片。' : '默认沿用工作流原图；上传后替换，清除上传后恢复原图。'}</p>}
+        <label htmlFor={inputId} className="block text-sm font-medium">{image.label}{image.optional ? t('（可選）', ' (Optional)') : t('（可替換）', ' (Replaceable)')}</label>
+        {selected && <button type="button" className="block w-full cursor-zoom-in" onClick={() => onPreview(selected.url)} aria-label={t(`預覽${image.label}`, `Preview ${image.label}`)}><img src={selected.url} alt={image.label} className="h-28 w-full rounded-lg object-contain" /></button>}
+        <Input id={inputId} className="min-h-11 max-w-full py-2" type="file" accept="image/*" disabled={uploading !== null} onChange={(event) => void upload(event, image.nodeId, image.role)} aria-label={t(`上傳${image.label}`, `Upload ${image.label}`)} />
+        {uploading === image.nodeId && <p role="status" className="text-xs">{t('正在讀取圖片…', 'Reading image…')}</p>}
+        {selected ? <Button type="button" variant="ghost" size="sm" className="min-h-11" aria-label={t(`清除${image.label}`, `Clear ${image.label}`)} onClick={() => setWorkflowImage(image.nodeId, null, identity)}>{t('清除圖片', 'Clear Image')}</Button> : <p className="text-xs text-muted-foreground">{image.role === 'character_sheet' ? t('可上傳完整角色設定集，人物身份與外觀以此圖為準。', 'Upload a full character sheet; character identity and appearance will follow this image.') : image.optional ? t('可上傳此節點所需的參考圖片。', 'Upload a reference image required by this node.') : t('預設沿用工作流原圖；上傳後替換，清除上傳後恢復原圖。', 'Uses workflow default image unless replaced; clearing restores the original.')}</p>}
       </div>
     })}</div>}
-    {isPending && identity && <p role="status" className="text-xs text-muted-foreground">正在读取节点参数…</p>}
-    {error && <div role="status" className="text-xs text-destructive">节点参数读取失败：{error.message}<Button type="button" size="sm" variant="ghost" className="min-h-11" onClick={() => void refetch()}>重试</Button></div>}
+    {isPending && identity && <p role="status" className="text-xs text-muted-foreground">{t('正在讀取節點參數…', 'Loading node parameters…')}</p>}
+    {error && <div role="status" className="text-xs text-destructive">{t('節點參數讀取失敗：', 'Failed to load node parameters: ')}{error.message}<Button type="button" size="sm" variant="ghost" className="min-h-11" onClick={() => void refetch()}>{t('重試', 'Retry')}</Button></div>}
     {controls.some((control) => control.recommended) && <div className="grid gap-4 sm:grid-cols-2">{controls.filter((control) => control.recommended).map(renderControl)}</div>}
-    {controls.some((control) => !control.recommended) && <details><summary className="min-h-11 cursor-pointer py-2 text-sm">其他可调参数（{controls.filter((control) => !control.recommended).length}）</summary><div className="grid gap-4 pt-3 sm:grid-cols-2">{controls.filter((control) => !control.recommended).map(renderControl)}</div></details>}
-    {schemas && !controls.length && <p className="text-xs text-muted-foreground">此工作流没有可编辑的普通参数。</p>}
+    {controls.some((control) => !control.recommended) && <details><summary className="min-h-11 cursor-pointer py-2 text-sm">{t(`其他可調參數（${controls.filter((control) => !control.recommended).length}）`, `Other Adjustable Parameters (${controls.filter((control) => !control.recommended).length})`)}</summary><div className="grid gap-4 pt-3 sm:grid-cols-2">{controls.filter((control) => !control.recommended).map(renderControl)}</div></details>}
+    {schemas && !controls.length && <p className="text-xs text-muted-foreground">{t('此工作流沒有可編輯的普通參數。', 'This workflow has no editable scalar parameters.')}</p>}
   </div>
 }

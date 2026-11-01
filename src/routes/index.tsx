@@ -16,10 +16,11 @@ import { StatCard } from '@/components/common/StatCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useI18n } from '@/i18n'
 import { useStudio } from '@/store/studioStore'
 
 export const Route = createFileRoute('/')({
-  staticData: { title: '图库总览' },
+  staticData: { title: '圖庫總覽', titleEn: 'Overview' },
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(posesQuery),
@@ -35,50 +36,52 @@ function DashboardPage() {
   const { data: costumes } = useSuspenseQuery(costumesQuery)
   const { data: portraits } = useSuspenseQuery(portraitsQuery)
   const { recipe, togglePortrait } = useStudio()
+  const { locale, t, poseGroup: locPoseGroup, costume: locCostume, portrait: locPortrait } = useI18n()
 
   const topPortraits = portraits.filter((p) => p.热门).slice(0, 10)
   const totalImages = posesData.items.length + costumes.length + portraits.length
+  const numLocale = locale === 'en' ? 'en-US' : 'zh-TW'
 
   return (
     <>
-      <PageHeader title="AI 角色参考库" />
+      <PageHeader title={t('AI 角色參考庫', 'AI Character Reference Library')} />
 
-      {/* 核心数据指标卡片 */}
+      {/* 核心資料指標卡片 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
-          title="总参考图"
-          value={totalImages.toLocaleString('zh-CN')}
+          title={t('總參考圖', 'Total References')}
+          value={totalImages.toLocaleString(numLocale)}
           icon={<LayersIcon />}
-          desc="8,690 本地高清图"
+          desc={t('8,690 本地高清圖', '8,690 Local HD Images')}
         />
         <StatCard
-          title="动作姿势 (Pose)"
-          value={`${posesData.groups.length} 组`}
+          title={t('動作姿勢 (Pose)', 'Action Poses')}
+          value={t(`${posesData.groups.length} 組`, `${posesData.groups.length} Groups`)}
           icon={<PersonStandingIcon />}
-          desc={`${posesData.items.length} 张 · 5 视角`}
+          desc={t(`${posesData.items.length} 張 · 5 視角`, `${posesData.items.length} Images · 5 Angles`)}
         />
         <StatCard
-          title="服装穿搭 (Costume)"
-          value={`${costumes.length.toLocaleString('zh-CN')} 套`}
+          title={t('服裝穿搭 (Costume)', 'Costume Outfits')}
+          value={t(`${costumes.length.toLocaleString(numLocale)} 套`, `${costumes.length.toLocaleString(numLocale)} Sets`)}
           icon={<ShirtIcon />}
-          desc="8 大分类 · 双语标签"
+          desc={t('8 大分類 · 雙語標籤', '8 Categories · Bilingual Tags')}
         />
         <StatCard
-          title="人像颜值 (Portrait)"
-          value={`${portraits.length.toLocaleString('zh-CN')} 张`}
+          title={t('人像顏值 (Portrait)', 'Face Portraits')}
+          value={t(`${portraits.length.toLocaleString(numLocale)} 張`, `${portraits.length.toLocaleString(numLocale)} Portraits`)}
           icon={<UserRoundIcon />}
-          desc="CC0 协议 · 51 款发型"
+          desc={t('CC0 授權 · 51 款髮型', 'CC0 License · 51 Hairstyles')}
         />
       </div>
 
-      {/* 三大核心图库入口卡片 */}
+      {/* 三大核心圖庫入口卡片 */}
       <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <Link
           to="/poses"
           className="group flex flex-col justify-between rounded-[20px] bg-muted p-4 transition hover:bg-muted/70"
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">🕺 动作姿势库</h2>
+            <h2 className="text-base font-semibold">🕺 {t('動作姿勢庫', 'Pose Gallery')}</h2>
             <Badge variant="secondary">1,439</Badge>
           </div>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
@@ -86,7 +89,7 @@ function DashboardPage() {
               <img
                 key={g.key}
                 src={`/${g.order[0].缩略图}`}
-                alt={g.name}
+                alt={locPoseGroup(g).name}
                 loading="lazy"
                 className="aspect-3/4 w-full rounded-lg bg-background object-cover"
               />
@@ -99,7 +102,7 @@ function DashboardPage() {
           className="group flex flex-col justify-between rounded-[20px] bg-muted p-4 transition hover:bg-muted/70"
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">👗 服装穿搭库</h2>
+            <h2 className="text-base font-semibold">👗 {t('服裝穿搭庫', 'Costume Gallery')}</h2>
             <Badge variant="secondary">1,407</Badge>
           </div>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
@@ -107,7 +110,7 @@ function DashboardPage() {
               <img
                 key={c.id}
                 src={`/${c.缩略图}`}
-                alt={c.服装名称}
+                alt={locCostume(c).name}
                 loading="lazy"
                 className="aspect-3/4 w-full rounded-lg bg-background object-cover"
               />
@@ -120,7 +123,7 @@ function DashboardPage() {
           className="group flex flex-col justify-between rounded-[20px] bg-muted p-4 transition hover:bg-muted/70"
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">👤 人像颜值库</h2>
+            <h2 className="text-base font-semibold">👤 {t('人像顏值庫', 'Portrait Gallery')}</h2>
             <Badge variant="secondary">1,499</Badge>
           </div>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
@@ -128,7 +131,7 @@ function DashboardPage() {
               <img
                 key={p.id}
                 src={`/${p.缩略图}`}
-                alt={p.标题}
+                alt={locPortrait(p).title}
                 loading="lazy"
                 className="aspect-3/4 w-full rounded-lg bg-background object-cover"
               />
@@ -137,16 +140,16 @@ function DashboardPage() {
         </Link>
       </div>
 
-      {/* 热门人像 Top10 速选区 */}
+      {/* 熱門人像 Top10 速選區 */}
       <section className="rounded-[20px] bg-muted p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
             <FlameIcon className="size-4 text-orange-500" />
-            热门人像 Top 10
+            {t('熱門人像 Top 10', 'Top 10 Popular Portraits')}
           </h2>
           <Button variant="ghost" size="sm" asChild>
             <Link to="/portraits">
-              全部
+              {t('全部', 'View All')}
               <ArrowRightIcon className="size-3.5" />
             </Link>
           </Button>
@@ -155,6 +158,7 @@ function DashboardPage() {
         <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-5 lg:grid-cols-10">
           {topPortraits.map((item, idx) => {
             const picked = recipe.portrait?.id === item.id
+            const pLoc = locPortrait(item)
             return (
               <div
                 key={item.id}
@@ -164,7 +168,7 @@ function DashboardPage() {
                 <div className="relative aspect-4/5 overflow-hidden">
                   <img
                     src={`/${item.缩略图}`}
-                    alt={item.标题}
+                    alt={pLoc.title}
                     loading="lazy"
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
@@ -180,7 +184,7 @@ function DashboardPage() {
                   </span>
                 </div>
                 <div className="p-1.5">
-                  <div className="truncate text-[11px] font-medium">{item.发型名称}</div>
+                  <div className="truncate text-[11px] font-medium">{pLoc.styleName}</div>
                 </div>
               </div>
             )
@@ -188,23 +192,52 @@ function DashboardPage() {
         </div>
       </section>
 
-      {/* 底部免责声明提示条 */}
+      {/* 底部免責聲明提示條 */}
       <footer className="rounded-[18px] border border-border/60 bg-muted/50 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-        <strong className="text-foreground">⚠️ 免责声明：</strong>
-        本站姿势与服饰参考图源自 X 创作者{' '}
-        <a
-          href="https://x.com/giaaibusi"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-foreground"
-        >
-          ギア (@giaaibusi)
-        </a>{' '}
-        公开分享，版权归原作者所有，严禁商业倒卖。默认已开启「安全模式 (SFW)」隐藏 18+ 敏感分类，未满 18 周岁请勿关闭。本工具与素材
-        <strong className="text-foreground">仅供个人学习与合法艺术创作使用，严禁用于任何违法违规或侵害他人肖像权用途</strong>。{' '}
-        <Link to="/guide" className="font-medium text-primary underline">
-          查看完整免责声明 →
-        </Link>
+        <strong className="text-foreground">⚠️ {t('免責聲明：', 'Disclaimer: ')}</strong>
+        {locale === 'en' ? (
+          <>
+            Pose and costume reference images are sourced from public shares by X creator{' '}
+            <a
+              href="https://x.com/giaaibusi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              ギア (@giaaibusi)
+            </a>
+            . Copyright belongs to the original creator; commercial resale is strictly prohibited. "Safe Mode (SFW)" is
+            enabled by default to hide 18+ categories (do not disable if under 18). This tool and its assets are{' '}
+            <strong className="text-foreground">
+              strictly for personal study and lawful artistic creation; any illegal use or portrait rights infringement
+              is prohibited
+            </strong>
+            .{' '}
+            <Link to="/guide" className="font-medium text-primary underline">
+              Read full disclaimer →
+            </Link>
+          </>
+        ) : (
+          <>
+            本站姿勢與服飾參考圖源自 X 創作者{' '}
+            <a
+              href="https://x.com/giaaibusi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              ギア (@giaaibusi)
+            </a>{' '}
+            公開分享，版權歸原作者所有，嚴禁商業倒賣。預設已開啟「安全模式 (SFW)」隱藏 18+ 敏感分類，未滿 18 歲請勿關閉。本工具與素材
+            <strong className="text-foreground">
+              僅供個人學習與合法藝術創作使用，嚴禁用於任何違法違規或侵害他人肖像權用途
+            </strong>
+            。{' '}
+            <Link to="/guide" className="font-medium text-primary underline">
+              查看完整免責聲明 →
+            </Link>
+          </>
+        )}
       </footer>
     </>
   )

@@ -29,6 +29,8 @@ import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState 
 import { toast } from 'sonner'
 import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
 import { Field, Section } from '@/components/common/FormSection'
+import { WorkflowParameters } from '@/components/studio/WorkflowParameters'
+import { applyWorkflowOverrides, validateReferenceCombinations, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { PageHeader } from '@/components/common/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -46,6 +48,7 @@ import {
   COMFYUI_WORKFLOW_TEMPLATES,
   detectComfyUi,
   fileToDataUrl,
+  fetchComfyObjectInfo,
   parseComfyWorkflowNodes,
   PROVIDER_META,
   stitchRecipeCanvas,
@@ -114,7 +117,8 @@ function StudioPage() {
   const providerMeta = PROVIDER_META[activeProvider]
   const providerCfg = apiConfig.providers[activeProvider]
 
-  const defaultPrompt = buildRecipePrompt(recipe, apiConfig.stylePreset)
+  const activeWorkflowImages = activeProvider === 'comfyui' && recipe.workflowImagesIdentity === workflowIdentity(apiConfig.comfyuiParams.workflowJson) ? Object.values(recipe.workflowImages || {}) : []
+  const defaultPrompt = buildRecipePrompt(recipe, apiConfig.stylePreset, activeWorkflowImages)
   const prompt = customPrompt ?? defaultPrompt
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [extraUrlInput, setExtraUrlInput] = useState('')
@@ -175,7 +179,7 @@ function StudioPage() {
         cp.poseNodeId,
         cp.stitchedNodeId,
       ])
-      if (result.fixedJson) updateComfyUiParams({ workflowJson: result.fixedJson })
+      // 自动修复仅用于提交副本，保留导入的原始 API。
       setComfyCheck({ ...result, info: `${found.info}（${found.baseUrl}）` })
     } catch (e) {
       setComfyCheck({ ok: false, errors: [e instanceof Error ? e.message : '检测失败'], warnings: [], fixes: [] })
@@ -211,11 +215,12 @@ function StudioPage() {
     }
   }
 
-  const handleExportComfyJson = () => {
+  const handleExportComfyJson = async (original = false) => {
     try {
-      const wf = JSON.parse(apiConfig.comfyuiParams.workflowJson)
       const cp = apiConfig.comfyuiParams
-      if (cp.promptNodeId && cp.promptNodeId !== 'none' && wf[cp.promptNodeId]?.inputs) {
+      const schemas = !original && cp.parameterOverrides?.workflowId === workflowIdentity(cp.workflowJson) ? await fetchComfyObjectInfo(providerCfg.baseUrl, providerCfg.apiKey, cp.workflowJson) : undefined
+      const wf = JSON.parse(original ? cp.workflowJson : applyWorkflowOverrides(cp.workflowJson, cp.parameterOverrides, schemas))
+      if (!original && cp.promptNodeId && cp.promptNodeId !== 'none' && wf[cp.promptNodeId]?.inputs) {
         const inputs = wf[cp.promptNodeId].inputs
         for (const field of ['prompt', 'text', 'string', 'positive']) {
           if (typeof inputs[field] === 'string') {
@@ -268,12 +273,11 @@ function StudioPage() {
     { label: '人像', node: apiConfig.comfyuiParams.portraitNodeId, image: recipe.portrait },
     { label: '服装', node: apiConfig.comfyuiParams.costumeNodeId, image: recipe.costume },
     { label: '姿势', node: apiConfig.comfyuiParams.poseNodeId, image: recipe.pose },
-  ].filter((slot) => slot.node && slot.node !== 'none' && parsedComfyNodes.imageNodes.some((node) => node.id === slot.node) && !slot.image).map((slot) => slot.label) : []
+  ].filter((slot) => slot.node && slot.node !== 'none' && parsedComfyNodes.imageNodes.some((node) => node.id === slot.node && node.emptyValue === undefined) && !slot.image).map((slot) => slot.label) : []
 
   const extraImages = recipe.extraImages || []
-  const hasAnyRef = Boolean(
-    recipe.portrait || recipe.costume || recipe.pose || extraImages.length > 0
-  )
+  const hasStitchRefs = Boolean(recipe.portrait || recipe.costume || recipe.pose || extraImages.length > 0)
+  const hasAnyRef = hasStitchRefs || activeWorkflowImages.length > 0
 
   const processFiles = async (files: File[]) => {
     const imgFiles = files.filter((f) => f.type.startsWith('image/'))
@@ -356,6 +360,13 @@ function StudioPage() {
   }
 
   const handleGenerate = () => {
+    if (activeProvider === 'comfyui') {
+      const cp = apiConfig.comfyuiParams
+      const workflowImages = recipe.workflowImagesIdentity === workflowIdentity(cp.workflowJson) ? recipe.workflowImages || {} : {}
+      const selected = [recipe.portrait ? cp.portraitNodeId : '', recipe.costume ? cp.costumeNodeId : '', recipe.pose ? cp.poseNodeId : '', ...Object.keys(workflowImages)].filter((id) => id && id !== 'none')
+      const combinationError = validateReferenceCombinations(cp.workflowJson, selected)
+      if (combinationError) { toast.error(combinationError); setShowAdvanced(true); return }
+    }
     if (missingReferences.length) {
       setShowReferenceErrors(true)
       requestAnimationFrame(() => referenceErrorsRef.current?.focus())
@@ -412,7 +423,7 @@ function StudioPage() {
                   <DicesIcon className="size-3.5" />
                   随机
                 </Button>
-                {hasAnyRef && (
+                {hasAnyRef && hasStitchRefs && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -746,7 +757,7 @@ function StudioPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={handleExportComfyJson}
+                      onClick={() => void handleExportComfyJson()}
                     >
                       <DownloadIcon className="size-3.5" />
                       导出 .json
@@ -941,6 +952,8 @@ function StudioPage() {
                 </Field>
               </>
             )}
+
+            {activeProvider === 'comfyui' && showAdvanced && <WorkflowParameters onPreview={setZoomImageUrl} onUploadingChange={setUploadingSlot} />}
 
             {/* 展开的高级协议专属参数 */}
             {showAdvanced && (
@@ -1572,6 +1585,7 @@ function StudioPage() {
           <p className="text-xs text-muted-foreground">
             请在 ComfyUI 设置中开启「启用开发模式选项」，点击菜单中的「导出 (API)」获取 JSON 并粘贴于下方。
           </p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void handleExportComfyJson(true)}>导出原始 API</Button>
           <Textarea
             value={apiConfig.comfyuiParams.workflowJson}
             onChange={(e) =>

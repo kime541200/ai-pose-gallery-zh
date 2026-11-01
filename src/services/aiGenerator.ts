@@ -1,4 +1,5 @@
-import type { ApiConfig, ImageProviderId, RecipeState } from '@/types/gallery'
+import type { ApiConfig, ExtraReferenceImage, ImageProviderId, RecipeState } from '@/types/gallery'
+import { applyWorkflowOverrides, getWorkflowImages, validateReferenceCombinations, workflowIdentity, type ComfyObjectInfo } from '@/lib/comfyWorkflowParameters'
 import qwen2509ThreeImageWorkflow from '@/workflows/qwen_image_edit_2509_3img.api.json'
 
 export interface ProviderModelOption {
@@ -144,24 +145,32 @@ export const STYLE_PRESETS: Record<string, { label: string; prompt: string }> = 
 
 // 按实际传入模型的图片顺序动态生成「图1 / 图2 / 图3...」明确指代，支持附加上传图片
 // 用自然语言逐项描述（人物 / 服装 / 姿势），实测比堆砌要点更能让多图编辑模型还原服装、避免照搬人体模型线条
-const PHOTO_STYLES = new Set(['none', 'realistic', 'fashion', 'film'])
+const PHOTO_STYLES = new Set(['realistic', 'fashion', 'film'])
 
-export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic'): string {
+export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic', workflowImages: ExtraReferenceImage[] = []): string {
   const styleInfo = STYLE_PRESETS[stylePreset] ?? STYLE_PRESETS.realistic
   const isPhoto = PHOTO_STYLES.has(stylePreset)
+  const faceless = !recipe.portrait && !workflowImages.some((image) => image.role === 'character_sheet') && Boolean(recipe.costume && recipe.pose)
   const clauses: string[] = []
   let idx = 1
   let costumeIdx = 0
+
+  workflowImages.filter((image) => image.role === 'character_sheet').forEach(() => {
+    clauses.push('• 角色设定参考：提供的设定集展示同一角色的多个视角与细节，不是多个不同人物。保持角色的脸型、五官、发型、发色、肤色及服装配饰一致；只把它作为角色参考，成品布局遵循当前工作流的输出设置。')
+    idx++
+  })
 
   if (recipe.portrait) {
     const hairDesc =
       recipe.portrait.发型名称 && recipe.portrait.发型名称 !== '标准基础款'
         ? recipe.portrait.标题
         : recipe.portrait.发长
+    const skin = '人物的肤色必须与图一人物一致，所有裸露皮肤（包括服装镂空处露出的皮肤）必须与脸部肤色统一，统一后的肤色与质感按风格要求呈现。'
+    const outfit = recipe.costume ? '' : '保留图1人物原有可见服装与配饰，不复制姿势参考图的服装或白模外观。'
     clauses.push(
       recipe.portrait.source === 'upload'
-        ? `• 人物：图${idx}中的人物，保持其脸型、五官、发型和发色一致。`
-        : `• 人物：图${idx}中的人物，保持其脸型、五官、发型（${hairDesc}）和发色一致。`
+        ? `• 人物：图${idx}中的人物，保持其脸型、五官、发型和发色一致。${skin}${outfit}`
+        : `• 人物：图${idx}中的人物，保持其脸型、五官、发型（${hairDesc}）和发色一致。${skin}${outfit}`
     )
     idx++
   }
@@ -186,6 +195,13 @@ export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic'
     )
     idx++
   }
+  if (faceless) {
+    clauses.push('• 无脸展示：生成一位穿着参考服装的成年展示人物，脸部保持无五官的自然肤色表面，不添加眼睛、鼻子、嘴巴或具体人物身份；全身裸露皮肤的颜色统一，不照搬服装图或姿势图的灰白人台材质。')
+  }
+  for (const reference of workflowImages.filter((image) => image.role !== 'character_sheet')) {
+    clauses.push(`• 工作流参考：参考图${idx}（${reference.name || '补充参考'}）中的相关元素，具体用途以工作流要求为准。`)
+    idx++
+  }
   for (const extra of recipe.extraImages || []) {
     clauses.push(
       `• 附加参考：融合图${idx}（${extra.name || '补充元素'}）中的元素、配饰、背景或光影细节。`
@@ -198,11 +214,11 @@ export function buildRecipePrompt(recipe: RecipeState, stylePreset = 'realistic'
   }
 
   const lines = [
-    `请根据提供的 ${clauses.length} 张参考图，生成一张完整的${isPhoto ? '真实人物照片' : '人物图像'}：`,
+    `请根据${workflowImages.some((image) => image.role === 'character_sheet') ? '提供的角色设定参考' : `提供的 ${idx - 1} 张参考图`}，生成一张完整的${faceless ? '人物穿搭展示图' : isPhoto ? '真实人物照片' : '人物图像'}：`,
     ...clauses,
   ]
   if (styleInfo.prompt) {
-    lines.push(`• 风格：${styleInfo.prompt} 人物比例协调，手部与五官自然，光影统一。`)
+    lines.push(`• 风格：${styleInfo.prompt} ${faceless ? '人物比例协调，手部自然，脸部无五官，光影统一。' : '人物比例协调，手部与五官自然，光影统一。'}`)
   }
   lines.push('画面中没有任何文字、标志或水印。')
   return lines.join('\n')
@@ -438,7 +454,7 @@ function extractUniversalImage(json: any): string | null {
 // 本地 ComfyUI API 工作流模板与节点解析工具
 // ============================================================================
 
-type ComfyNode = { class_type: string; inputs: Record<string, any>; _meta?: { title?: string } }
+type ComfyNode = { class_type: string; inputs: Record<string, any>; _meta?: { title?: string; studio?: { imageRole?: string } } }
 type ComfyWorkflow = Record<string, ComfyNode>
 
 export type ComfyPresetId = 'qwen2509_3img' | 'qwen2509_2img' | 'qwen21_3img' | 'qwen21_2img'
@@ -616,7 +632,7 @@ export interface ComfyParsedNodes {
   valid: boolean
   isUiFormat: boolean
   error?: string
-  imageNodes: Array<{ id: string; title: string; classType: string; currentImage: string }>
+  imageNodes: Array<{ id: string; title: string; classType: string; currentImage: string; emptyValue?: string; role?: 'character_sheet' }>
   promptNodes: Array<{ id: string; title: string; classType: string; field: string }>
 }
 
@@ -649,10 +665,11 @@ export function parseComfyWorkflowNodes(workflowJson: string): ComfyParsedNodes 
       const inputs = node.inputs || {}
 
       if (classType === 'LoadImage' || typeof inputs.image === 'string') {
-        imageNodes.push({ id, title, classType, currentImage: String(inputs.image || '') })
+        imageNodes.push({ id, title, classType, currentImage: String(inputs.image || ''), ...(classType === 'LoadImageGoohai' ? { emptyValue: '无' } : {}), ...(node._meta?.studio?.imageRole === 'character_sheet' ? { role: 'character_sheet' as const } : {}) })
       }
 
       for (const field of ['prompt', 'text', 'string', 'positive']) {
+        if (Array.isArray(node._meta?.studio?.hiddenInputs) && node._meta.studio.hiddenInputs.includes(field)) continue
         if (typeof inputs[field] === 'string') {
           promptNodes.push({ id, title, classType, field })
           break
@@ -688,7 +705,8 @@ export function autoDetectComfyMappings(workflowJson: string): ComfyNodeMappings
   if (posPrompt) promptNodeId = posPrompt.id
 
   const usedIds = new Set<string>()
-  for (const n of parsed.imageNodes) {
+  const slotImages = parsed.imageNodes.filter((node) => node.role !== 'character_sheet')
+  for (const n of slotImages) {
     if (/人像|脸|人物|portrait|face|person/i.test(n.title) && portraitNodeId === 'none') {
       portraitNodeId = n.id
       usedIds.add(n.id)
@@ -704,7 +722,7 @@ export function autoDetectComfyMappings(workflowJson: string): ComfyNodeMappings
     }
   }
 
-  const remaining = parsed.imageNodes.filter((n) => !usedIds.has(n.id))
+  const remaining = slotImages.filter((n) => !usedIds.has(n.id))
   if (portraitNodeId === 'none' && remaining[0]) portraitNodeId = remaining.shift()!.id
   if (costumeNodeId === 'none' && remaining[0]) costumeNodeId = remaining.shift()!.id
   if (poseNodeId === 'none' && remaining[0]) poseNodeId = remaining.shift()!.id
@@ -834,33 +852,40 @@ function comboOptions(spec: any): string[] | null {
 
 const baseName = (s: string) => s.split(/[\\/]/).pop()!.toLowerCase()
 
+export async function fetchComfyObjectInfo(baseUrl: string, apiKey: string, workflowJson: string): Promise<ComfyObjectInfo> {
+  const parsed = parseComfyWorkflowNodes(workflowJson)
+  if (!parsed.valid) throw new Error(parsed.error || '工作流 JSON 无效')
+  const workflow: ComfyWorkflow = JSON.parse(workflowJson)
+  const base = normalizeComfyBase(baseUrl)
+  const classes = Array.from(new Set(Object.values(workflow).map((node) => node.class_type).filter(Boolean)))
+  const entries = await Promise.all(classes.map(async (cls) => {
+    const res = await comfyFetch(base, `/object_info/${encodeURIComponent(cls)}`, {}, apiKey, 15000)
+    if (!res.ok) throw new Error(`[ComfyUI] 无法读取节点「${cls}」的定义（HTTP ${res.status}），请检查连接地址、访问令牌和网关接口权限。`)
+    const json = await readJsonSafe(res)
+    return [cls, json?.[cls]] as const
+  }))
+  return Object.fromEntries(entries.filter(([, definition]) => definition))
+}
+
 export async function checkComfyWorkflow(
   baseUrl: string,
   apiKey: string,
   workflowJson: string,
-  mappedImageNodeIds: string[] = []
+  mappedImageNodeIds: string[] = [],
+  objectInfo?: ComfyObjectInfo
 ): Promise<ComfyCheckResult> {
-  const base = normalizeComfyBase(baseUrl)
   const parsedInfo = parseComfyWorkflowNodes(workflowJson)
   if (!parsedInfo.valid) {
     return { ok: false, errors: [parsedInfo.error || '工作流 JSON 无效'], warnings: [], fixes: [] }
   }
   const wf: ComfyWorkflow = JSON.parse(workflowJson)
-  const classes = Array.from(new Set(Object.values(wf).map((n) => n?.class_type).filter(Boolean)))
-
-  const infoEntries = await Promise.all(
-    classes.map(async (cls) => {
-      const res = await comfyFetch(base, `/object_info/${encodeURIComponent(cls)}`, {}, apiKey, 15000)
-      const json = res.ok ? await readJsonSafe(res) : {}
-      return [cls, json?.[cls]] as const
-    })
-  )
-  const info = Object.fromEntries(infoEntries)
+  const info = objectInfo ?? await fetchComfyObjectInfo(baseUrl, apiKey, workflowJson)
 
   const errors: string[] = []
   const warnings: string[] = []
   const fixes: string[] = []
   const mapped = new Set(mappedImageNodeIds.filter((x) => x && x !== 'none'))
+  const imageLoaders = new Set(getWorkflowImages(workflowJson, [], info).map((node) => node.nodeId))
 
   for (const [id, node] of Object.entries(wf)) {
     if (!node?.class_type) continue
@@ -876,7 +901,20 @@ export async function checkComfyWorkflow(
     const optional = def.input?.optional || {}
     const inputs = node.inputs || {}
 
-    for (const name of Object.keys(required)) {
+    for (const [name, spec] of Object.entries<any>(required)) {
+      // V3 自动扩展组使用 images.image_1 等扁平输入，组名本身不参与执行。
+      if (spec?.[0] === 'COMFY_AUTOGROW_V3') {
+        const template = spec[1]?.template
+        if (template?.input?.required) {
+          for (let i = 0; i < (template.min ?? 0); i++) {
+            const child = template.names?.[i] ?? `${template.prefix}${i}`
+            if (!(`${name}.${child}` in inputs)) {
+              errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}.${child}`)
+            }
+          }
+        }
+        continue
+      }
       if (!(name in inputs)) errors.push(`节点 ${id}「${title}」缺少必填输入 ${name}`)
     }
 
@@ -885,6 +923,7 @@ export async function checkComfyWorkflow(
       const spec = required[name] ?? optional[name]
       const options = comboOptions(spec)
       if (!options || typeof value !== 'string') continue
+      if (name === 'image' && mapped.has(id) && imageLoaders.has(id)) continue
       if (node.class_type === 'LoadImage' && name === 'image') {
         if (!mapped.has(id) && !options.includes(value)) {
           warnings.push(`节点 ${id}「${title}」引用的图片 ${value} 不在 ComfyUI input 目录中，且未映射到人像/服装/姿势槽位`)
@@ -1072,10 +1111,9 @@ async function generateWithComfyUi(params: {
   config: ApiConfig
   baseUrl: string
   apiKey: string
-  model?: string
   onProgress?: (p: GenerationProgress) => void
 }): Promise<{ imageUrl: string; modelUsed: string; providerUsed: ImageProviderId }> {
-  const { recipe, prompt, config, baseUrl, apiKey, model } = params
+  const { recipe, prompt, config, baseUrl, apiKey } = params
   const report = params.onProgress ?? (() => {})
   const cp = config.comfyuiParams
   const timeoutSec = Math.max(60, cp.timeoutSec || 600)
@@ -1087,16 +1125,21 @@ async function generateWithComfyUi(params: {
   // 0. 预检：服务在线 + 节点/模型与本机匹配
   report({ stage: 'check', message: '正在检查 ComfyUI 服务与模型…' })
   await testComfyConnection(baseUrl, apiKey)
-  const check = await checkComfyWorkflow(baseUrl, apiKey, cp.workflowJson, [
+  const schemas = await fetchComfyObjectInfo(baseUrl, apiKey, cp.workflowJson)
+  const extraImageNodes = getWorkflowImages(cp.workflowJson, [cp.portraitNodeId, cp.costumeNodeId, cp.poseNodeId, cp.stitchedNodeId], schemas)
+  const extraImages = recipe.workflowImagesIdentity === workflowIdentity(cp.workflowJson) ? recipe.workflowImages || {} : {}
+  const selectedJson = applyWorkflowOverrides(cp.workflowJson, cp.parameterOverrides, schemas)
+  const check = await checkComfyWorkflow(baseUrl, apiKey, selectedJson, [
     cp.portraitNodeId,
     cp.costumeNodeId,
     cp.poseNodeId,
     cp.stitchedNodeId,
-  ])
+    ...extraImageNodes.filter((node) => extraImages[node.nodeId]?.url || (node.optional && node.role === 'character_sheet')).map((node) => node.nodeId),
+  ], schemas)
   if (!check.ok) {
     throw new Error(`[ComfyUI] 工作流与本机不匹配：\n${check.errors.join('\n')}`)
   }
-  const workflow: ComfyWorkflow = JSON.parse(check.fixedJson ?? cp.workflowJson)
+  const workflow: ComfyWorkflow = JSON.parse(check.fixedJson ?? selectedJson)
 
   // 1. 按映射槽位上传参考图并注入节点
   const slotUploads: Array<{ nodeId: string; src: string | null; prefix: string; label: string }> = [
@@ -1119,12 +1162,17 @@ async function generateWithComfyUi(params: {
       label: '姿势',
     },
   ]
+  const combinationError = validateReferenceCombinations(cp.workflowJson, [
+    ...slotUploads.filter((slot) => slot.src && slot.nodeId && slot.nodeId !== 'none').map((slot) => slot.nodeId),
+    ...extraImageNodes.filter((node) => extraImages[node.nodeId]?.url).map((node) => node.nodeId),
+  ])
+  if (combinationError) throw new Error(`[ComfyUI] ${combinationError}`)
 
   const invalidSlots = slotUploads.filter((slot) => slot.nodeId && slot.nodeId !== 'none' && !parsedInfo.imageNodes.some((node) => node.id === slot.nodeId))
   if (invalidSlots.length) {
     throw new Error(`[ComfyUI] ${invalidSlots.map((slot) => slot.label).join('、')}节点映射已失效，请重新识别或选择节点`)
   }
-  const missingSlots = slotUploads.filter((slot) => slot.nodeId && slot.nodeId !== 'none' && !slot.src)
+  const missingSlots = slotUploads.filter((slot) => slot.nodeId && slot.nodeId !== 'none' && !slot.src && parsedInfo.imageNodes.find((node) => node.id === slot.nodeId)?.emptyValue === undefined)
   if (missingSlots.length) {
     throw new Error(`[ComfyUI] 请先选择或上传：${missingSlots.map((slot) => slot.label).join('、')}`)
   }
@@ -1132,10 +1180,25 @@ async function generateWithComfyUi(params: {
   for (const slot of slotUploads) {
     if (!slot.nodeId || slot.nodeId === 'none' || !workflow[slot.nodeId]?.inputs) continue
     if (!slot.src) {
+      const emptyValue = parsedInfo.imageNodes.find((node) => node.id === slot.nodeId)?.emptyValue
+      if (emptyValue !== undefined) {
+        workflow[slot.nodeId].inputs.image = emptyValue
+        continue
+      }
       throw new Error(`当前工作流需要「${slot.label}」参考图（节点 ${slot.nodeId}），请先在图库中选择`)
     }
     report({ stage: 'upload', message: `正在上传${slot.label}参考图…` })
     workflow[slot.nodeId].inputs.image = await uploadImageToComfy(baseUrl, slot.src, slot.prefix, apiKey)
+  }
+
+  for (const node of extraImageNodes) {
+    const image = extraImages[node.nodeId]
+    if (!image?.url) {
+      if (node.optional && node.role === 'character_sheet') workflow[node.nodeId].inputs.image = '无'
+      continue
+    }
+    report({ stage: 'upload', message: `正在上传${node.label}…` })
+    workflow[node.nodeId].inputs.image = await uploadImageToComfy(baseUrl, image.url, 'studio_reference', apiKey)
   }
 
   if (cp.stitchedNodeId && cp.stitchedNodeId !== 'none' && workflow[cp.stitchedNodeId]?.inputs) {
@@ -1266,7 +1329,7 @@ async function generateWithComfyUi(params: {
       if (!blob.size || !blob.type.startsWith('image/')) {
         throw new Error('[ComfyUI] 返回的生成结果不是有效图片')
       }
-      return { imageUrl: await blobToDataUrl(blob), modelUsed: model || 'ComfyUI 工作流', providerUsed: 'comfyui' }
+      return { imageUrl: await blobToDataUrl(blob), modelUsed: 'ComfyUI 工作流', providerUsed: 'comfyui' }
     }
   } finally {
     ws?.close()
@@ -1312,6 +1375,8 @@ export async function generateCharacterImage(params: {
     recipe.costume && (recipe.costume.预览图 || recipe.costume.原图 || recipe.costume.缩略图),
     recipe.pose && (recipe.pose.原图 || recipe.pose.缩略图),
     ...(recipe.extraImages || []).map((x) => x.url),
+    ...(provider === 'comfyui' && recipe.workflowImagesIdentity === workflowIdentity(config.comfyuiParams.workflowJson)
+      ? Object.values(recipe.workflowImages || {}).map((image) => image.url) : []),
   ].filter(Boolean) as string[]
 
   if (!rawSources.length) {
@@ -1326,7 +1391,7 @@ export async function generateCharacterImage(params: {
   const baseUrl = (pCfg.baseUrl.trim() || PROVIDER_META[provider].defaultBaseUrl).replace(/\/+$/, '')
 
   if (provider === 'comfyui') {
-    return generateWithComfyUi({ recipe, prompt, config, baseUrl, apiKey, model, onProgress })
+    return generateWithComfyUi({ recipe, prompt, config, baseUrl, apiKey, onProgress })
   }
 
   // 判断当前请求是否需要转换为本地 Base64：

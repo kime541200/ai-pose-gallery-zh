@@ -65,6 +65,8 @@
 
 > 本地 ComfyUI 三图合成（Qwen Image Edit 2509）的模型清单、工作流说明和本地运行方法见 [docs/comfyui-local.md](docs/comfyui-local.md)。
 
+> 导入 API 后的动态高级参数、设定集参考上传与可选显示声明见 [ComfyUI 工作流高级参数](docs/comfyui-workflow-parameters.md)。
+
 ### 3. ComfyUI 原生自定义节点插件（`comfyui_plugin/`）
 将本仓库克隆到 `ComfyUI/custom_nodes/ai-pose-gallery-zh` 后，ComfyUI 画布右键菜单 **「AI角色三合一参考图集」** 下自动提供 4 个节点：
 - **AI 姿势参考图 (`PoseGalleryNode`)**：输出 `姿势图 (IMAGE)`、`图片ID`、`姿势提示词`

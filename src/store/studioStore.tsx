@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { idbGet, idbSet } from '@/lib/idbStorage'
+import { parseParameterWorkflow, workflowIdentity } from '@/lib/comfyWorkflowParameters'
 import { recipeBackup } from '@/lib/recipeImages'
 import {
   buildRecipePrompt,
@@ -199,6 +200,7 @@ interface StudioContextValue {
   addExtraImage: (item: { name: string; url: string }) => void
   removeExtraImage: (id: string) => void
   updateExtraImageName: (id: string, name: string) => void
+  setWorkflowImage: (nodeId: string, image: ExtraReferenceImage | null, identity: string) => void
   clearRecipe: () => void
   randomizeRecipe: (pools: { portraits?: PortraitItem[]; costumes?: CostumeItem[]; poses?: PoseItem[] }) => void
   updateApiConfig: (patch: Partial<ApiConfig>) => void
@@ -292,6 +294,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           portrait: savedRecipe.portrait ?? null,
           costume: savedRecipe.costume ?? null,
           pose: savedRecipe.pose ?? null,
+          workflowImages: savedRecipe.workflowImages ?? {},
+          workflowImagesIdentity: savedRecipe.workflowImagesIdentity,
           extraImages: Array.isArray(savedRecipe.extraImages) ? savedRecipe.extraImages : [],
         })
       }
@@ -417,6 +421,34 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }))
   }
 
+  const setWorkflowImage = (nodeId: string, image: ExtraReferenceImage | null, identity: string) => {
+    if (identity !== workflowIdentity(apiConfig.comfyuiParams.workflowJson)) return
+    setRecipe((r) => {
+      const workflowImages = r.workflowImagesIdentity === identity ? { ...r.workflowImages } : {}
+      if (image) workflowImages[nodeId] = image
+      else delete workflowImages[nodeId]
+      return { ...r, workflowImages, workflowImagesIdentity: identity }
+    })
+  }
+
+  const activeComfyParams = apiConfig.comfyuiParams
+  useEffect(() => {
+    if (!idbHydrated) return
+    const cp = activeComfyParams
+    const identity = workflowIdentity(cp.workflowJson)
+    const workflow = parseParameterWorkflow(cp.workflowJson)
+    const mapped = [cp.portraitNodeId, cp.costumeNodeId, cp.poseNodeId, cp.stitchedNodeId]
+    const ids = new Set(Object.entries(workflow || {}).filter(([id, node]) => !mapped.includes(id) && typeof node.inputs.image === 'string').map(([id]) => id))
+    // IndexedDB 恢复与工作流变更同步时清理失效映射。
+    // oxlint-disable-next-line react/set-state-in-effect
+    setRecipe((r) => {
+      const entries = Object.entries(r.workflowImages || {})
+      const kept = r.workflowImagesIdentity === identity ? entries.filter(([id]) => ids.has(id)) : []
+      if (entries.length === kept.length && r.workflowImagesIdentity === identity) return r
+      return { ...r, workflowImages: Object.fromEntries(kept), workflowImagesIdentity: identity }
+    })
+  }, [activeComfyParams, idbHydrated])
+
   const clearRecipe = () => {
     setRecipe({ portrait: null, costume: null, pose: null, extraImages: [] })
     toast.success('已清空配方')
@@ -517,7 +549,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       ? 'ComfyUI 工作流'
       : pCfg.model === 'custom' ? pCfg.customModel || 'custom' : pCfg.model
     const finalPrompt =
-      overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset)
+      overridePrompt ?? customPrompt ?? buildRecipePrompt(recipeSnapshot, configSnapshot.stylePreset, configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson) ? Object.values(recipeSnapshot.workflowImages || {}) : [])
 
     isGeneratingRef.current = true
     setIsGenerating(true)
@@ -539,6 +571,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         recipeSnapshot.costume?.source === 'upload' ? recipeSnapshot.costume.服装名称 : recipeSnapshot.costume?.分类,
         recipeSnapshot.pose ? `${recipeSnapshot.pose.姿势名称}${recipeSnapshot.pose.角度 ? `(${recipeSnapshot.pose.角度})` : ''}` : null,
         extraCount ? `+${extraCount}附图` : null,
+        ...(configSnapshot.activeProvider === 'comfyui' && recipeSnapshot.workflowImagesIdentity === workflowIdentity(configSnapshot.comfyuiParams.workflowJson)
+          ? Object.values(recipeSnapshot.workflowImages || {}).filter((image) => image?.url).map((image) => image.role === 'character_sheet' ? '角色设定集' : image.name)
+          : []),
       ]
         .filter(Boolean)
         .join(' + ')
@@ -589,6 +624,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         addExtraImage,
         removeExtraImage,
         updateExtraImageName,
+        setWorkflowImage,
         clearRecipe,
         randomizeRecipe,
         updateApiConfig,

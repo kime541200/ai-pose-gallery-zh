@@ -20,14 +20,14 @@ export function Section({ title, desc, actions, children, className }: { title: 
 // 表单项：标签 + 输入框 + 提示
 export function Field({ label, htmlFor, hint, badge, children }: { label: string; htmlFor?: string; hint?: string; badge?: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid content-start gap-2">
+    <div className="grid min-w-0 content-start gap-2">
       <div className="flex h-5 items-center gap-2">
         <label htmlFor={htmlFor} className="text-sm leading-none font-medium select-none">
           {label}
         </label>
         {badge}
       </div>
-      <div className="[&_button[role=combobox]]:bg-background [&_input]:bg-background">{children}</div>
+      <div className="min-w-0 [&_button[role=combobox]]:min-w-0 [&_button[role=combobox]]:bg-background [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:overflow-hidden [&_input]:bg-background">{children}</div>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )

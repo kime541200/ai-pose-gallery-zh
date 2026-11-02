@@ -47,12 +47,15 @@ const RECIPE_KEY = 'pose_atlas_recipe_v3'
 const HISTORY_KEY = 'pose_atlas_history_v3'
 const SAFE_MODE_KEY = 'pose_atlas_safe_mode_v1'
 
-const COMFY_CONFIG_VERSION = 2
+const COMFY_CONFIG_VERSION = 3
+
+const shouldEnableProxyByDefault = (provider?: ImageProviderId) =>
+  provider === 'qwen' || provider === 'doubao'
 
 const DEFAULT_API_CONFIG: ApiConfig = {
   activeProvider: 'gemini',
   imagePassMode: 'url',
-  useProxy: true,
+  useProxy: false,
   stylePreset: 'realistic',
   sendStitchedSheet: false,
   providers: {
@@ -158,13 +161,22 @@ function migrateComfy(
 function mergeStoredConfig(raw: unknown): ApiConfig {
   if (!raw || typeof raw !== 'object') return DEFAULT_API_CONFIG
   const obj = raw as Partial<ApiConfig>
+  const storedVer = obj.comfyuiParams?.configVersion ?? 1
   const comfy = migrateComfy(
     { ...DEFAULT_API_CONFIG.providers.comfyui, ...obj.providers?.comfyui },
     { ...DEFAULT_API_CONFIG.comfyuiParams, configVersion: 1, ...obj.comfyuiParams }
   )
+  const activeProvider = obj.activeProvider ?? DEFAULT_API_CONFIG.activeProvider
+  // v3 起服务端 CORS 代理默认关闭，仅在切换到 Qwen / Doubao 时自动关联开启
+  const useProxy =
+    storedVer < 3
+      ? shouldEnableProxyByDefault(activeProvider)
+      : (obj.useProxy ?? shouldEnableProxyByDefault(activeProvider))
   return {
     ...DEFAULT_API_CONFIG,
     ...obj,
+    activeProvider,
+    useProxy,
     providers: {
       gemini: { ...DEFAULT_API_CONFIG.providers.gemini, ...obj.providers?.gemini },
       gpt: { ...DEFAULT_API_CONFIG.providers.gpt, ...obj.providers?.gpt },
@@ -187,6 +199,9 @@ interface StudioContextValue {
   safeMode: boolean
   toggleSafeMode: () => void
   requestUnlockNsfw: (onUnlocked?: () => void) => void
+  poseDepthMode: boolean
+  setPoseDepthMode: (val: boolean) => void
+  toggleRecipePoseDepth: () => void
   // 全局持久化的合成台状态（切换页面不丢失、不断开请求）
   customPrompt: string | null
   setCustomPrompt: (val: string | null) => void
@@ -270,6 +285,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   })
   const [ageGateOpen, setAgeGateOpen] = useState(false)
   const pendingUnlockCbRef = useRef<(() => void) | null>(null)
+  const [poseDepthMode, setPoseDepthModeState] = useState<boolean>(() => Boolean(recipe.pose?.useDepth))
 
   // 提升到根部 Provider 的生成状态，路由切换不会卸载或中断
   const [customPrompt, setCustomPrompt] = useState<string | null>(null)
@@ -298,6 +314,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]).then(([savedRecipe, savedHistory]) => {
       if (!active) return
       if (savedRecipe) {
+        if (savedRecipe.pose?.useDepth !== undefined) {
+          setPoseDepthModeState(Boolean(savedRecipe.pose.useDepth))
+        }
         setRecipe({
           portrait: savedRecipe.portrait ?? null,
           costume: savedRecipe.costume ?? null,
@@ -378,6 +397,24 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const setCostume = (costume: CostumeItem | null) => setRecipe((r) => ({ ...r, costume }))
   const setPose = (pose: PoseItem | null) => setRecipe((r) => ({ ...r, pose }))
 
+  const setPoseDepthMode = (val: boolean) => {
+    setPoseDepthModeState(val)
+    setRecipe((r) => {
+      if (!r.pose || r.pose.source === 'upload' || Boolean(r.pose.useDepth) === val) return r
+      return { ...r, pose: { ...r.pose, useDepth: val } }
+    })
+  }
+
+  const toggleRecipePoseDepth = () => {
+    const next = !(recipe.pose?.useDepth ?? poseDepthMode)
+    setPoseDepthMode(next)
+    toast.success(
+      next
+        ? tr('已切換姿勢圖為：深度圖 (Depth)', 'Switched pose image to: Depth Map')
+        : tr('已切換姿勢圖為：素體白模', 'Switched pose image to: 3D Mannequin')
+    )
+  }
+
   const togglePortrait = (item: PortraitItem) => {
     setRecipe((r) => {
       const remove = r.portrait?.id === item.id
@@ -405,18 +442,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }
 
   const togglePose = (item: PoseItem) => {
+    const useDepth = item.source === 'upload' ? false : (item.useDepth ?? poseDepthMode)
     setRecipe((r) => {
-      const remove = r.pose?.id === item.id
+      const remove = r.pose?.id === item.id && Boolean(r.pose?.useDepth) === useDepth
       const loc = localizePose(item, getCurrentLocale())
       toast.success(
         remove
           ? tr('已移除姿勢', 'Removed pose')
           : tr(
-              `已選姿勢：${loc.name}${loc.angle ? `（${loc.angle}）` : ''}`,
-              `Selected pose: ${loc.name}${loc.angle ? ` (${loc.angle})` : ''}`
+              `已選姿勢：${loc.name}${loc.angle ? `（${loc.angle}${useDepth ? ' · 深度圖' : ''}）` : ''}`,
+              `Selected pose: ${loc.name}${loc.angle ? ` (${loc.angle}${useDepth ? ' · Depth' : ''})` : ''}`
             )
       )
-      return { ...r, pose: remove ? null : item }
+      return { ...r, pose: remove ? null : { ...item, useDepth } }
     })
   }
 
@@ -493,7 +531,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       costume: costumePool.length
         ? costumePool[Math.floor(Math.random() * costumePool.length)]
         : prev.costume,
-      pose: posePool.length ? posePool[Math.floor(Math.random() * posePool.length)] : prev.pose,
+      pose: posePool.length
+        ? { ...posePool[Math.floor(Math.random() * posePool.length)], useDepth: poseDepthMode }
+        : prev.pose,
     }))
     toast.success(
       safeMode
@@ -503,7 +543,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }
 
   const updateApiConfig = (patch: Partial<ApiConfig>) => {
-    setApiConfig((prev) => ({ ...prev, ...patch }))
+    setApiConfig((prev) => {
+      const next = { ...prev, ...patch }
+      if (patch.activeProvider && patch.useProxy === undefined) {
+        next.useProxy = shouldEnableProxyByDefault(patch.activeProvider)
+      }
+      return next
+    })
   }
 
   const updateProviderConfig = (provider: ImageProviderId, patch: Partial<ProviderEndpointConfig>) => {
@@ -639,6 +685,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         safeMode,
         toggleSafeMode,
         requestUnlockNsfw,
+        poseDepthMode,
+        setPoseDepthMode,
+        toggleRecipePoseDepth,
         customPrompt,
         setCustomPrompt,
         previewUrl,

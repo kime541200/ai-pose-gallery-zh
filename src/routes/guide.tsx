@@ -44,8 +44,8 @@ function GuidePage() {
           <h3 className="mt-2 text-sm font-semibold">{t('動作姿勢庫 (1,439)', 'Pose Gallery (1,439)')}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {t(
-              '挑選 5 視角 3D 素體姿勢，結合雲端 API 或本地 ComfyUI 一鍵生成角色立繪。',
-              'Choose 5-angle 3D mannequin poses and combine with Cloud APIs or local ComfyUI to generate full character illustrations.'
+              '挑選 5 視角 3D 素體白模或深度圖（Depth），結合雲端 API 或本地 ComfyUI 一鍵生成角色立繪。',
+              'Choose 5-angle 3D mannequin poses or depth maps (Depth), and combine with Cloud APIs or local ComfyUI to generate full character illustrations.'
             )}
           </p>
         </div>
@@ -119,11 +119,12 @@ function GuidePage() {
           <div className="space-y-2.5 rounded-2xl bg-background p-4 text-xs leading-relaxed text-muted-foreground">
             <p>
               <strong className="text-foreground">• Original Creator Copyright: </strong>
-              All pose (<code>ai-pose-gallery.pages.dev</code>), costume (<code>ai-costume-gallery.pages.dev</code>),
-              and portrait (<code>ai-portrait-gallery.pages.dev</code>) reference images and metadata in this repository
-              originate from public sites by <strong className="text-foreground">ギア (@giaaibusi)</strong>. Copyright
-              remains with the original author. This repository only provides multilingual localization and frontend
-              tooling without claiming ownership over the original images.
+              All pose (<code>ai-pose-gallery.pages.dev</code>, <code>ai-pose-depth-gallery.pages.dev</code>), costume (
+              <code>ai-costume-gallery.pages.dev</code>), and portrait (<code>ai-portrait-gallery.pages.dev</code>)
+              reference images and metadata in this repository originate from public sites by{' '}
+              <strong className="text-foreground">ギア (@giaaibusi)</strong>. Copyright remains with the original
+              author. This repository only provides multilingual localization and frontend tooling without claiming
+              ownership over the original images.
             </p>
             <p>
               <strong className="text-foreground">• Usage & Distribution Restrictions: </strong>
@@ -139,12 +140,15 @@ function GuidePage() {
           <div className="space-y-2.5 rounded-2xl bg-background p-4 text-xs leading-relaxed text-muted-foreground">
             <p>
               <strong className="text-foreground">• 原作者版權歸屬：</strong>
-              本倉庫收錄的全部姿勢（<code>ai-pose-gallery.pages.dev</code>）、服裝（<code>ai-costume-gallery.pages.dev</code>）、人像（<code>ai-portrait-gallery.pages.dev</code>）參考圖與原始元資料均源自原作者{' '}
-              <strong className="text-foreground">ギア（@giaaibusi）</strong> 公開站點，著作權歸原作者所有。本倉庫僅為多語系本地化翻譯整理與前端工程學習存檔，不對原始圖片主張任何所有權。
+              本倉庫收錄的全部姿勢（<code>ai-pose-gallery.pages.dev</code>、<code>ai-pose-depth-gallery.pages.dev</code>
+              ）、服裝（<code>ai-costume-gallery.pages.dev</code>）、人像（<code>ai-portrait-gallery.pages.dev</code>
+              ）參考圖與原始元資料均源自原作者 <strong className="text-foreground">ギア（@giaaibusi）</strong>{' '}
+              公開站點，著作權歸原作者所有。本倉庫僅為多語系本地化翻譯整理與前端工程學習存檔，不對原始圖片主張任何所有權。
             </p>
             <p>
               <strong className="text-foreground">• 使用與分發限制：</strong>
-              人像庫遵循 <strong className="text-emerald-600 dark:text-emerald-400">CC0 1.0 協議</strong>；姿勢庫與服裝庫免費供個人學習與 AI 生圖參考使用，
+              人像庫遵循 <strong className="text-emerald-600 dark:text-emerald-400">CC0 1.0 協議</strong>
+              ；姿勢庫與服裝庫免費供個人學習與 AI 生圖參考使用，
               <strong className="text-foreground">嚴禁將本圖庫原始圖片打包轉售或用於付費分發</strong>。
             </p>
           </div>

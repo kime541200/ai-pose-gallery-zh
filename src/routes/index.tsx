@@ -52,13 +52,13 @@ function DashboardPage() {
           title={t('總參考圖', 'Total References')}
           value={totalImages.toLocaleString(numLocale)}
           icon={<LayersIcon />}
-          desc={t('8,690 本地高清圖', '8,690 Local HD Images')}
+          desc={t('11,568 本地高清圖', '11,568 Local HD Images')}
         />
         <StatCard
           title={t('動作姿勢 (Pose)', 'Action Poses')}
           value={t(`${posesData.groups.length} 組`, `${posesData.groups.length} Groups`)}
           icon={<PersonStandingIcon />}
-          desc={t(`${posesData.items.length} 張 · 5 視角`, `${posesData.items.length} Images · 5 Angles`)}
+          desc={t(`${posesData.items.length} 張 · 白模/深度`, `${posesData.items.length} Images · Model/Depth`)}
         />
         <StatCard
           title={t('服裝穿搭 (Costume)', 'Costume Outfits')}

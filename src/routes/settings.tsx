@@ -260,7 +260,13 @@ function SettingsPage() {
             </Select>
           </Field>
 
-          <Field label={t('伺服端 CORS 代理 (/api/proxy)', 'Server CORS Proxy (/api/proxy)')}>
+          <Field
+            label={t('伺服端 CORS 代理 (/api/proxy)', 'Server CORS Proxy (/api/proxy)')}
+            hint={t(
+              '預設關閉（瀏覽器直連）；切換到阿里雲百煉 (Qwen) 或火山方舟 (Doubao) 時會自動開啟。僅支援白名單網域（可透過伺服端環境變數 PROXY_ALLOWED_ORIGINS 擴充）',
+              'Disabled by default (direct browser request); auto-enabled when switching to Alibaba Qwen or Volcengine Doubao. Only allowlisted origins are permitted (expandable via server env PROXY_ALLOWED_ORIGINS).'
+            )}
+          >
             <div className="flex h-9 items-center justify-between rounded-xl border bg-background px-3">
               <span className="text-xs text-muted-foreground">
                 {apiConfig.useProxy

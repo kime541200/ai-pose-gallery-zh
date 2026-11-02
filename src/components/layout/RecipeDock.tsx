@@ -16,14 +16,23 @@ import { costumesQuery, portraitsQuery, posesQuery } from '@/api/gallery'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { workflowIdentity } from '@/lib/comfyWorkflowParameters'
-import { referenceImageUrl } from '@/lib/recipeImages'
+import { poseThumbPath, referenceImageUrl } from '@/lib/recipeImages'
 import { buildRecipePrompt } from '@/services/aiGenerator'
 import { useStudio } from '@/store/studioStore'
 
 export function RecipeDock() {
   const { pathname } = useLocation()
-  const { recipe, apiConfig, isGenerating, setPortrait, setCostume, setPose, clearRecipe, randomizeRecipe } =
-    useStudio()
+  const {
+    recipe,
+    apiConfig,
+    isGenerating,
+    setPortrait,
+    setCostume,
+    setPose,
+    toggleRecipePoseDepth,
+    clearRecipe,
+    randomizeRecipe,
+  } = useStudio()
   const { locale, t, portrait: locPortrait, costume: locCostume, pose: locPose } = useI18n()
   const qc = useQueryClient()
   const extraCount = (recipe.extraImages || []).length
@@ -136,12 +145,29 @@ export function RecipeDock() {
             {recipe.pose && poseLoc ? (
               <>
                 <img
-                  src={referenceImageUrl(recipe.pose.缩略图)}
+                  src={referenceImageUrl(poseThumbPath(recipe.pose))}
                   alt={poseLoc.name}
                   className="h-8 w-7 shrink-0 rounded-md object-cover sm:h-10 sm:w-8"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium sm:text-xs">{poseLoc.name}</div>
+                  <div className="truncate text-[11px] font-medium sm:text-xs" title={poseLoc.name}>
+                    {poseLoc.name}
+                  </div>
+                  {recipe.pose.source !== 'upload' && (
+                    <button
+                      type="button"
+                      onClick={toggleRecipePoseDepth}
+                      className="mt-0.5 inline-flex items-center gap-1 rounded bg-background/80 px-1 py-0.5 text-[10px] leading-none text-muted-foreground hover:text-foreground"
+                    >
+                      <span className={!recipe.pose.useDepth ? 'font-semibold text-foreground' : ''}>
+                        {t('白模', 'Model')}
+                      </span>
+                      <span>/</span>
+                      <span className={recipe.pose.useDepth ? 'font-semibold text-primary' : ''}>
+                        {t('深度', 'Depth')}
+                      </span>
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"

@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useI18n } from '@/i18n'
+import { poseImagePath, poseThumbPath } from '@/lib/recipeImages'
 import { cn } from '@/lib/utils'
 import { useStudio } from '@/store/studioStore'
 import type { PoseGroup, PoseItem } from '@/types/gallery'
@@ -36,7 +37,7 @@ export const Route = createFileRoute('/poses')({
 
 function PosesPage() {
   const { data } = useSuspenseQuery(posesQuery)
-  const { recipe, togglePose, safeMode, requestUnlockNsfw } = useStudio()
+  const { recipe, togglePose, safeMode, requestUnlockNsfw, poseDepthMode, setPoseDepthMode } = useStudio()
   const {
     locale,
     t,
@@ -159,27 +160,57 @@ function PosesPage() {
       <PageHeader
         title={t('動作姿勢庫', 'Pose Gallery')}
         actions={
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant={viewMode === 'group' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setViewMode('group')
-                setShown(60)
-              }}
-            >
-              {t('分組', 'Grouped')}
-            </Button>
-            <Button
-              variant={viewMode === 'single' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setViewMode('single')
-                setShown(96)
-              }}
-            >
-              {t('單張', 'Single')}
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 素體白模 / 深度圖 切換 */}
+            <div className="inline-flex items-center rounded-lg border border-border/70 bg-muted p-0.5">
+              <button
+                type="button"
+                onClick={() => setPoseDepthMode(false)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-xs font-medium transition',
+                  !poseDepthMode
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t('素體白模', '3D Mannequin')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPoseDepthMode(true)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-xs font-medium transition',
+                  poseDepthMode
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t('深度圖 (Depth)', 'Depth Map')}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant={viewMode === 'group' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setViewMode('group')
+                  setShown(60)
+                }}
+              >
+                {t('分組', 'Grouped')}
+              </Button>
+              <Button
+                variant={viewMode === 'single' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setViewMode('single')
+                  setShown(96)
+                }}
+              >
+                {t('單張', 'Single')}
+              </Button>
+            </div>
           </div>
         }
       />
@@ -328,7 +359,7 @@ function PosesPage() {
                   className="relative aspect-3/4 cursor-zoom-in overflow-hidden rounded-2xl bg-background"
                 >
                   <img
-                    src={`/${item.缩略图}`}
+                    src={`/${poseThumbPath(item, poseDepthMode)}`}
                     alt={`${gLoc.name} · ${iLoc.angle}`}
                     loading="lazy"
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
@@ -384,7 +415,7 @@ function PosesPage() {
                         )}
                       >
                         <img
-                          src={`/${angItem.缩略图}`}
+                          src={`/${poseThumbPath(angItem, poseDepthMode)}`}
                           alt={angLabel}
                           loading="lazy"
                           className="aspect-square w-full rounded-md object-cover"
@@ -416,7 +447,7 @@ function PosesPage() {
                   className="relative aspect-3/4 cursor-zoom-in overflow-hidden rounded-2xl bg-background"
                 >
                   <img
-                    src={`/${item.缩略图}`}
+                    src={`/${poseThumbPath(item, poseDepthMode)}`}
                     alt={iLoc.name}
                     loading="lazy"
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
@@ -472,12 +503,17 @@ function PosesPage() {
             (() => {
               const grp = filteredGroups[viewer.groupIndex]
               const it = viewer.item
-              const picked = recipe.pose?.id === it.id
+              const picked = recipe.pose?.id === it.id && Boolean(recipe.pose?.useDepth) === poseDepthMode
+              const activeImgPath = poseImagePath(it, poseDepthMode)
               const itLoc = locPose(it)
               return (
                 <div className="grid md:grid-cols-[1fr_300px]">
                   <div className="relative flex max-h-[78vh] min-h-[360px] items-center justify-center bg-muted/60 p-4">
-                    <img src={`/${it.原图}`} alt={itLoc.name} className="max-h-[72vh] w-auto rounded-lg object-contain" />
+                    <img
+                      src={`/${activeImgPath}`}
+                      alt={itLoc.name}
+                      className="max-h-[72vh] w-auto rounded-lg object-contain"
+                    />
                     {grp && grp.order.length > 1 && (
                       <>
                         <Button
@@ -511,9 +547,31 @@ function PosesPage() {
                   <div className="flex flex-col justify-between gap-4 border-t p-5 md:border-t-0 md:border-l">
                     <div className="space-y-4">
                       <DialogHeader>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Badge>{it.姿势编号}</Badge>
                           <Badge variant="outline">{itLoc.angle}</Badge>
+                          <div className="ml-auto inline-flex items-center rounded-md border bg-muted p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setPoseDepthMode(false)}
+                              className={cn(
+                                'rounded px-2 py-0.5 text-[11px] font-medium transition',
+                                !poseDepthMode ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground'
+                              )}
+                            >
+                              {t('白模', 'Model')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPoseDepthMode(true)}
+                              className={cn(
+                                'rounded px-2 py-0.5 text-[11px] font-medium transition',
+                                poseDepthMode ? 'bg-primary text-primary-foreground shadow-2xs' : 'text-muted-foreground'
+                              )}
+                            >
+                              {t('深度圖', 'Depth')}
+                            </button>
+                          </div>
                         </div>
                         <DialogTitle className="mt-2 text-lg leading-snug">{itLoc.name}</DialogTitle>
                       </DialogHeader>
@@ -553,7 +611,7 @@ function PosesPage() {
                                   )}
                                 >
                                   <img
-                                    src={`/${angItem.缩略图}`}
+                                    src={`/${poseThumbPath(angItem, poseDepthMode)}`}
                                     alt={angLabel}
                                     className="aspect-square w-full rounded object-cover"
                                   />
@@ -570,8 +628,12 @@ function PosesPage() {
                         <dd className="font-medium">{itLoc.system}</dd>
                         <dt className="text-muted-foreground">{t('動作分類', 'Category')}</dt>
                         <dd className="font-medium">{itLoc.category}</dd>
+                        <dt className="text-muted-foreground">{t('目前模式', 'Mode')}</dt>
+                        <dd className="font-medium">
+                          {poseDepthMode ? t('深度圖 (Depth Map)', 'Depth Map') : t('3D 素體白模', '3D Mannequin')}
+                        </dd>
                         <dt className="text-muted-foreground">{t('原圖尺寸', 'Dimensions')}</dt>
-                        <dd className="font-medium">900 × 1200 PNG</dd>
+                        <dd className="font-medium">900 × 1200 {poseDepthMode ? 'WebP' : 'PNG'}</dd>
                       </dl>
                     </div>
 
@@ -580,17 +642,20 @@ function PosesPage() {
                         {picked ? <CheckIcon className="size-4" /> : <PlusIcon className="size-4" />}
                         {picked
                           ? t('已在角色配方中（點擊移除）', 'In Recipe (Click to remove)')
-                          : t('加入角色配方', 'Add to Recipe')}
+                          : t(
+                              `加入角色配方（${poseDepthMode ? '深度圖' : '白模'}）`,
+                              `Add to Recipe (${poseDepthMode ? 'Depth' : 'Model'})`
+                            )}
                       </Button>
                       <div className="grid grid-cols-2 gap-2">
                         <Button variant="outline" size="sm" asChild>
-                          <a href={`/${it.原图}`} download={`${it.id}.png`}>
+                          <a href={`/${activeImgPath}`} download={`${it.id}${poseDepthMode ? '_depth.webp' : '.png'}`}>
                             <DownloadIcon className="size-3.5" />
-                            {t('下載 PNG', 'Download PNG')}
+                            {poseDepthMode ? t('下載深度圖', 'Download Depth') : t('下載 PNG', 'Download PNG')}
                           </a>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                          <a href={`/${it.原图}`} target="_blank" rel="noopener noreferrer">
+                          <a href={`/${activeImgPath}`} target="_blank" rel="noopener noreferrer">
                             <ExternalLinkIcon className="size-3.5" />
                             {t('新分頁原圖', 'Open Original')}
                           </a>

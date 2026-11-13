@@ -107,6 +107,7 @@ export interface ComfyUiParams {
   parameterOverrides?: WorkflowParameterOverrides
   workflowPreset:
     | 'flux3_klein'
+    | 'moss_image_edit'
     | 'qwen2509_depth'
     | 'qwen2509_3img'
     | 'qwen2509_2img'

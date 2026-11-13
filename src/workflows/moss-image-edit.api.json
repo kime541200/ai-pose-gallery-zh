@@ -1,0 +1,358 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "moss_image_sft_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "加载 MOSS-Image SFT (Int8) 模型"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_int8_convrot.safetensors",
+      "type": "moss_image",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "加载 Qwen3.5 9B 文本编码器"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "加载 Flux2 VAE"
+    }
+  },
+  "4": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "moss-image/moss_image_edit_lora_rank_64_bf16.safetensors",
+      "strength_model": 1
+    },
+    "_meta": {
+      "title": "加载 MOSS-Image Edit LoRA"
+    }
+  },
+  "7": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "lora_name": "moss-image/moss_image_color_depth_control.safetensors",
+      "strength_model": 1
+    },
+    "_meta": {
+      "title": "加载 MOSS-Image Depth Control LoRA"
+    }
+  },
+  "5": {
+    "class_type": "SkipLayerGuidanceDiTSimple",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "double_layers": "",
+      "single_layers": "22",
+      "start_percent": 0,
+      "end_percent": 1
+    },
+    "_meta": {
+      "title": "SkipLayerGuidanceDiTSimple"
+    }
+  },
+  "10": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image1.png"
+    },
+    "_meta": {
+      "title": "图1：人像参考 (Portrait)",
+      "studio": {
+        "optionalSlot": true
+      }
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image2.png"
+    },
+    "_meta": {
+      "title": "图2：服装参考 (Costume)",
+      "studio": {
+        "optionalSlot": true
+      }
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image3.png"
+    },
+    "_meta": {
+      "title": "图3：姿势参考 (Pose)",
+      "studio": {
+        "optionalSlot": true
+      }
+    }
+  },
+  "13": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "10",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 0.5,
+      "resolution_steps": 16
+    },
+    "_meta": {
+      "title": "人像参考缩放 (0.5 MP)"
+    }
+  },
+  "14": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "11",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 0.5,
+      "resolution_steps": 16
+    },
+    "_meta": {
+      "title": "服装参考缩放 (0.5 MP)"
+    }
+  },
+  "16": {
+    "class_type": "DepthAnythingV2Preprocessor",
+    "inputs": {
+      "image": [
+        "12",
+        0
+      ],
+      "ckpt_name": "depth_anything_v2_vitl.pth",
+      "resolution": 768
+    },
+    "_meta": {
+      "title": "姿势 3D 深度轮廓预处理 (DepthAnythingV2)"
+    }
+  },
+  "20": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "{{PROMPT}}",
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1,
+      "images.image_0": [
+        "13",
+        0
+      ],
+      "images.image_1": [
+        "14",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "正向提示词与多图编码 (MOSS-Image Edit)"
+    }
+  },
+  "21": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "nsfw, worst quality, bad anatomy, watermark, jpeg artifact",
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1,
+      "images.image_0": [
+        "13",
+        0
+      ],
+      "images.image_1": [
+        "14",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "反向提示词与多图编码 (Negative)",
+      "studio": {
+        "controls": [
+          {
+            "input": "prompt",
+            "label": "反向提示词 (Negative Prompt)",
+            "group": "提示词"
+          }
+        ]
+      }
+    }
+  },
+  "26": {
+    "class_type": "MOSSImageControl",
+    "inputs": {
+      "positive": [
+        "20",
+        0
+      ],
+      "negative": [
+        "21",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "depth_map": [
+        "16",
+        0
+      ],
+      "strength": 1,
+      "start_percent": 0,
+      "end_percent": 0.6
+    },
+    "_meta": {
+      "title": "姿勢深度控制 (MOSSImageControl)",
+      "studio": {
+        "controls": [
+          {
+            "input": "strength",
+            "label": "深度控制强度 (strength)",
+            "group": "姿势控制"
+          },
+          {
+            "input": "end_percent",
+            "label": "深度控制结束比例 (end_percent)",
+            "group": "姿势控制"
+          }
+        ]
+      }
+    }
+  },
+  "22": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "输出画布尺寸 (EmptyFlux2LatentImage)",
+      "studio": {
+        "controls": [
+          {
+            "input": "width",
+            "label": "输出宽度 (width)",
+            "group": "画布尺寸"
+          },
+          {
+            "input": "height",
+            "label": "输出高度 (height)",
+            "group": "画布尺寸"
+          }
+        ]
+      }
+    }
+  },
+  "23": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "positive": [
+        "26",
+        0
+      ],
+      "negative": [
+        "26",
+        1
+      ],
+      "latent_image": [
+        "22",
+        0
+      ],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "KSampler 采样器 (30 步)",
+      "studio": {
+        "controls": [
+          {
+            "input": "steps",
+            "label": "采样步数 (steps)",
+            "group": "采样参数"
+          },
+          {
+            "input": "cfg",
+            "label": "CFG 引导强度",
+            "group": "采样参数"
+          }
+        ]
+      }
+    }
+  },
+  "24": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "23",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE 解码"
+    }
+  },
+  "25": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "24",
+        0
+      ],
+      "filename_prefix": "pose-gallery/moss-studio"
+    },
+    "_meta": {
+      "title": "保存生成结果"
+    }
+  }
+}

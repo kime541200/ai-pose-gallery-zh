@@ -2,6 +2,7 @@ import type { ApiConfig, ExtraReferenceImage, ImageProviderId, RecipeState } fro
 import { applyWorkflowOverrides, getWorkflowImages, validateReferenceCombinations, workflowIdentity, type ComfyObjectInfo } from '@/lib/comfyWorkflowParameters'
 import { poseImagePath, referenceImageUrl } from '@/lib/recipeImages'
 import flux3KleinWorkflow from '@/workflows/flux3-klein-edit.api.json'
+import mossImageEditWorkflow from '@/workflows/moss-image-edit.api.json'
 import qwen2509DepthWorkflow from '@/workflows/qwen-image-edit-2509.api.json'
 import qwen2509ThreeImageWorkflow from '@/workflows/qwen_image_edit_2509_3img.api.json'
 
@@ -471,6 +472,7 @@ type ComfyWorkflow = Record<string, ComfyNode>
 
 export type ComfyPresetId =
   | 'flux3_klein'
+  | 'moss_image_edit'
   | 'qwen2509_depth'
   | 'qwen2509_3img'
   | 'qwen2509_2img'
@@ -626,6 +628,11 @@ export const COMFYUI_WORKFLOW_TEMPLATES: Record<
   flux3_klein: {
     label: 'FLUX 3 Image Klein Distilled 三图合成（3D 深度姿态）· 默认推荐',
     workflow: flux3KleinWorkflow as ComfyWorkflow,
+    defaults: { promptNodeId: '20', portraitNodeId: '10', costumeNodeId: '11', poseNodeId: '12', stitchedNodeId: 'none' },
+  },
+  moss_image_edit: {
+    label: 'MOSS-Image Edit 三图合成（3D 深度控制 · 实验）',
+    workflow: mossImageEditWorkflow as ComfyWorkflow,
     defaults: { promptNodeId: '20', portraitNodeId: '10', costumeNodeId: '11', poseNodeId: '12', stitchedNodeId: 'none' },
   },
   qwen2509_depth: {
@@ -1441,6 +1448,33 @@ function pruneUnusedImageSlot(workflow: ComfyWorkflow, loadNodeId: string): void
       kept.forEach((val, idx) => {
         node.inputs[`image${idx + 1}`] = val
       })
+    } else if (node.class_type === 'TextEncodeMOSSImageEdit') {
+      const kept: unknown[] = []
+      const keys = Object.keys(node.inputs)
+        .filter((k) => /^images\.image_\d+$/.test(k))
+        .sort((a, b) => Number(a.replace('images.image_', '')) - Number(b.replace('images.image_', '')))
+      for (const k of keys) {
+        const val = node.inputs[k]
+        if (!Array.isArray(val) || !deleted.has(String(val[0]))) kept.push(val)
+        delete node.inputs[k]
+      }
+      if (kept.length > 0) {
+        kept.forEach((val, idx) => {
+          node.inputs[`images.image_${idx}`] = val
+        })
+      } else {
+        // 无参考图时降级为纯文本 CLIPTextEncode，避免 Autogrow min=1 校验失败
+        node.class_type = 'CLIPTextEncode'
+        node.inputs = {
+          clip: node.inputs.clip,
+          text: typeof node.inputs.prompt === 'string' ? node.inputs.prompt : '',
+        }
+      }
+    } else if (node.class_type === 'MOSSImageControl') {
+      for (const mapKey of ['depth_map', 'color_map']) {
+        const ref = node.inputs[mapKey]
+        if (Array.isArray(ref) && deleted.has(String(ref[0]))) delete node.inputs[mapKey]
+      }
     }
   }
 }
